@@ -1,0 +1,260 @@
+import tkinter as tk
+
+from constants import COL
+from scoring import snap, clamp
+from targets import TARGET_CONFIGS, build_dist_config
+from views.menu import MenuMixin
+from views.target import TargetMixin
+from views.scorecard import ScorecardMixin
+from views.analysis import AnalysisMixin
+from views.settings import SettingsMixin
+
+
+class TargetSheetApp(MenuMixin, TargetMixin, ScorecardMixin,
+                     AnalysisMixin, SettingsMixin):
+    """
+    TargetSheet application root.
+
+    State lives on the instance; the view mixins read from and write to it.
+    All screen frames are built once at startup and shown/hidden by name.
+
+    Shot schema:
+        x, y : float     – SVG coordinates of the shot
+        sc   : int       – score (0–5)
+        iv   : bool       – True if V-bull
+        lb   : str       – score label ("V"/"5"/"4"/"3"/"2"/"M")
+        tp   : str       – shot type: "A" | "B" | "sc"
+        w, e : float     – wind / elevation dialled at time of shot
+        cl   : str|None  – shot-call key, or None
+
+    String schema:
+        shots : list[shot]
+        cv    : str       – conversion setting at commit time
+        dist  : str       – distance/standard config key
+        mu    : float     – SVG units per MOA for the string's distance
+    """
+
+    def __init__(self):
+        # ── State ──────────────────────────────────────────────────────────────
+        self.shots:          list[dict] = []
+        self.strings:        list[dict] = []
+        self.wind_val:       float = 0.0
+        self.elev_val:       float = 0.0
+        self.conv:           str   = "none"   # "none" | "b" | "ab"
+        self.conv_chosen:    bool  = False
+        self.analysis_idx              = None  # None | "current" | int
+        self.current_screen: str   = "menu"
+
+        # Target-canvas zoom/pan
+        self._zoom:       float = 1.0
+        self._pan:        list  = [0.0, 0.0]
+        self._drag_anchor       = None
+        # Analysis-canvas zoom/pan
+        self._a_zoom:     float = 1.0
+        self._a_pan:      list  = [0.0, 0.0]
+
+        # Per-config sight presets (keyed by full config key)
+        self.presets: dict = {
+            k: {"aperture": "", "elevation": ""} for k in TARGET_CONFIGS
+        }
+
+        # Current physical target lane/number the shooter is firing on
+        self.target_number: str = ""
+
+        # Match length — number of scored shots in the string (10 or 15)
+        self.shoot_len: int = 10
+
+        # User options
+        self.show_rec: bool = True     # show the "Dial to" wind/elev recommendation
+        self.show_graphs: bool = True  # show the wind & elevation graphs while shooting
+
+        # Active distance config (default 300y NRA until the user selects one)
+        self.active_dist = "300y-nra"
+        self.active_rings, self.active_mu = build_dist_config("300y-nra")
+
+        # ── Build UI ───────────────────────────────────────────────────────────
+        self.root = tk.Tk()
+        self.root.title("TargetSheet — DCRA Fullbore")
+        self.root.configure(bg=COL["bg"])
+        self.root.geometry("1080x720")
+        self.root.minsize(940, 640)
+
+        self._content = tk.Frame(self.root, bg=COL["bg"])
+        self._content.pack(fill="both", expand=True)
+
+        self._build_menu_view()
+        self._build_dist_select_view()
+        self._build_target_view()
+        self._build_scorecard_view()
+        self._build_analysis_view()
+        self._build_options_view()
+        self._build_presets_view()
+
+        self._draw_target_bg()
+        self.show_screen("menu")
+
+        self.root.mainloop()
+
+    # ── Screen navigation ───────────────────────────────────────────────────────
+
+    def show_screen(self, name: str):
+        self.current_screen = name
+        frames = {
+            "menu":        self._vm,
+            "dist_select": self._vds,
+            "target":      self._vt,
+            "scorecard":   self._vs,
+            "analysis":    self._va,
+            "options":     self._vo,
+            "presets":     self._vp,
+        }
+        for frame in frames.values():
+            frame.pack_forget()
+        frames[name].pack(fill="both", expand=True)
+
+        if name == "menu":
+            self._refresh_resume_button()
+        elif name == "target":
+            self.render()
+        elif name == "scorecard":
+            self._render_scorecard()
+        elif name == "analysis":
+            self._render_analysis()
+
+    def _select_distance(self, dist_key: str):
+        """Set the active distance config and switch to the target screen."""
+        self.active_dist = dist_key
+        self.active_rings, self.active_mu = build_dist_config(dist_key)
+        self._dist_label_var.set(dist_key)
+        self._redraw_target()
+        self.show_screen("target")
+
+    def _back_to_menu(self):
+        if self.shots:
+            self._toast("In-progress string paused — tap Target to resume.")
+        self.show_screen("menu")
+
+    def _toast(self, msg: str, duration: int = 2800):
+        t = tk.Label(self.root, text=msg, bg="#2d2d2d", fg="white",
+                     font=("Helvetica", 10), padx=16, pady=9)
+        t.place(relx=0.5, rely=1.0, anchor="s", y=-12)
+        self.root.after(duration, t.destroy)
+
+    def set_analysis(self, key):
+        self.analysis_idx = key
+        self.show_screen("analysis")
+
+    # ── Shared widgets ──────────────────────────────────────────────────────────
+
+    def _build_nav_bar(self, parent, back_label: str, back_cmd, title: str = ""):
+        nav = tk.Frame(parent, bg=COL["nav_bg"])
+        nav.pack(fill="x", side="top")
+        tk.Button(nav, text=back_label, bg=COL["nav_bg"], fg=COL["accent"],
+                  font=("Helvetica", 11), relief="flat", bd=0,
+                  padx=14, pady=8, cursor="hand2",
+                  command=back_cmd).pack(side="left")
+        if title:
+            tk.Label(nav, text=title, bg=COL["nav_bg"], fg=COL["text"],
+                     font=("Helvetica", 12, "bold")).pack(side="left", padx=4)
+        tk.Frame(parent, bg=COL["border"], height=1).pack(fill="x", side="top")
+
+    # ── Scoring / string logic ──────────────────────────────────────────────────
+
+    def commit_string(self):
+        if not self.shots:
+            return
+        if self.analysis_idx == "current":
+            self.analysis_idx = len(self.strings)
+        self.strings.append({
+            "shots":     list(self.shots),
+            "cv":        self.conv,
+            "dist":      self.active_dist,
+            "mu":        self.active_mu,
+            "shoot_len": self.shoot_len,
+        })
+        self.shots = []
+        self.conv  = "none"
+        self.conv_chosen = False
+        self.render()
+        self.show_screen("scorecard")
+
+    def apply_rec(self):
+        r = self._compute_recommendation()
+        if r:
+            self.wind_val = r["w"]
+            self.elev_val = r["e"]
+            self._update_controls()
+
+    def _compute_labels(self, shots: list[dict], cv: str) -> list[str]:
+        """Display labels for each shot, accounting for sighter conversion."""
+        out, sc_idx = [], 0
+        offset = 1 if cv == "none" else 2 if cv == "b" else 3
+        for s in shots:
+            if s["tp"] == "A":
+                out.append("1" if cv == "ab" else "A")
+            elif s["tp"] == "B":
+                out.append("1" if cv == "b" else ("2" if cv == "ab" else "B"))
+            else:
+                out.append(str(sc_idx + offset))
+                sc_idx += 1
+        return out
+
+    def _get_phase(self) -> dict:
+        """Which shot comes next: sighter A, sighter B, scored shot, or done."""
+        n = len(self.shots)
+        if n == 0:
+            return {"tp": "A", "lb": "Sighter A"}
+        if n == 1:
+            return {"tp": "B", "lb": "Sighter B"}
+        sc_count = sum(1 for s in self.shots if s["tp"] == "sc")
+        # Converted sighters count toward the total, reducing scored shots needed
+        converted = 0 if self.conv == "none" else 1 if self.conv == "b" else 2
+        max_sc    = self.shoot_len - converted
+        if sc_count >= max_sc:
+            return {"tp": "done", "lb": "String complete"}
+        off = 1 if self.conv == "none" else 2 if self.conv == "b" else 3
+        return {"tp": "sc", "lb": f"Shot {sc_count + off}"}
+
+    def _calc_total(self, shots: list[dict], cv: str,
+                    shoot_len: int = None) -> dict:
+        """Total score / V count / shot count under a conversion setting."""
+        if shoot_len is None:
+            shoot_len = self.shoot_len
+        converted = 0 if cv == "none" else 1 if cv == "b" else 2
+        max_sc    = shoot_len - converted
+        scoring = [s for s in shots if s["tp"] == "sc"][:max_sc]
+
+        extra = []
+        if cv in ("b", "ab"):
+            b = next((s for s in shots if s["tp"] == "B"), None)
+            if b:
+                extra.append(b)
+        if cv == "ab":
+            a = next((s for s in shots if s["tp"] == "A"), None)
+            if a:
+                extra.insert(0, a)
+
+        all_s = extra + scoring
+        return {
+            "tot": sum(s["sc"] for s in all_s),
+            "v":   sum(1 for s in all_s if s["iv"]),
+            "n":   len(all_s),
+        }
+
+    def _compute_recommendation(self) -> dict | None:
+        """
+        Wind/elevation that would centre the current group.
+        W_rec = W − x / mu  (shot right of centre → reduce rightward wind)
+        E_rec = E + y / mu  (SVG +y = physically down → increase elevation)
+        """
+        if not self.shots:
+            return None
+        n      = len(self.shots)
+        mean_x = sum(s["x"] for s in self.shots) / n
+        mean_y = sum(s["y"] for s in self.shots) / n
+        mu     = self.active_mu
+        return {
+            "w": clamp(snap(self.wind_val - mean_x / mu)),
+            "e": clamp(snap(self.elev_val + mean_y / mu)),
+            "n": n,
+        }

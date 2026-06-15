@@ -461,6 +461,7 @@ class TargetMixin:
             "cl": None,
         })
         self.render()
+        self._save_session()
 
     def _on_zoom(self, event):
         w, h, _, _, _ = self._metrics()
@@ -497,10 +498,14 @@ class TargetMixin:
     def adj_wind(self, direction: int):
         self.wind_val = clamp(snap(self.wind_val + direction * 0.25))
         self._update_controls()
+        if self.shots:
+            self._save_session()
 
     def adj_elev(self, direction: int):
         self.elev_val = clamp(snap(self.elev_val + direction * 0.25))
         self._update_controls()
+        if self.shots:
+            self._save_session()
 
     def edit_value(self, which: str):
         current = self.wind_val if which == "wind" else self.elev_val
@@ -519,6 +524,8 @@ class TargetMixin:
             else:
                 self.elev_val = v
             self._update_controls()
+            if self.shots:
+                self._save_session()
 
     def set_call(self, key: str):
         if not self.shots:
@@ -527,6 +534,7 @@ class TargetMixin:
         s["cl"] = None if s["cl"] == key else key
         self._update_call_buttons()
         self._refresh_shot_table()
+        self._save_session()
 
     def set_conv(self, key: str):
         self.conv = key
@@ -535,6 +543,7 @@ class TargetMixin:
             b.config(bg=COL["text"] if k == key else COL["bg"],
                      fg="white"     if k == key else COL["text2"])
         self.render()
+        self._save_session()
 
     def undo_shot(self):
         if self.shots:
@@ -543,6 +552,7 @@ class TargetMixin:
                 self.conv_chosen = False
                 self.conv = "none"
             self.render()
+            self._save_session()
 
     # ── Render / update ────────────────────────────────────────────────────────
 

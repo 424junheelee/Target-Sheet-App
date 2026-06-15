@@ -60,10 +60,12 @@ class SettingsMixin:
     def _toggle_show_rec(self):
         self.show_rec = self._show_rec_var.get()
         self._update_rec_row()
+        self._save_settings()
 
     def _toggle_show_graphs(self):
         self.show_graphs = self._show_graphs_var.get()
         self._draw_ballistic_graphs()
+        self._save_settings()
 
     def _build_presets_view(self):
         self._vp = tk.Frame(self._content, bg=COL["bg"])
@@ -130,4 +132,5 @@ class SettingsMixin:
                                  side="left", padx=(10, 0))
                     var.trace_add("write",
                                   lambda *_, ck=cfg_key, fk=fkey, v=var:
-                                  self.presets[ck].update({fk: v.get()}))
+                                  (self.presets[ck].update({fk: v.get()}),
+                                   self._save_presets()))

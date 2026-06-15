@@ -82,6 +82,7 @@ class MenuMixin:
                 b.config(bg=COL["accent"], fg="white")
             else:
                 b.config(bg=COL["bg"], fg=COL["text2"])
+        self._save_settings()
 
     def _refresh_resume_button(self):
         """Show the resume banner only while a string is in progress."""

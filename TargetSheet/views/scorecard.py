@@ -135,6 +135,7 @@ class ScorecardMixin:
         self.conv_chosen = False
         if self.analysis_idx == "current":
             self.analysis_idx = None
+        self._save_session()   # shots is now [] → writes None (clears session file)
         self.render()
         self._render_scorecard()
 
@@ -153,4 +154,5 @@ class ScorecardMixin:
             self.analysis_idx = None
         elif isinstance(self.analysis_idx, int) and self.analysis_idx > idx:
             self.analysis_idx -= 1
+        self._save_scorecards()
         self._render_scorecard()

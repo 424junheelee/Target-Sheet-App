@@ -1,5 +1,7 @@
+import datetime
 import tkinter as tk
 
+import storage
 from constants import COL
 from scoring import snap, clamp
 from targets import TARGET_CONFIGS, build_dist_config
@@ -72,6 +74,10 @@ class TargetSheetApp(MenuMixin, TargetMixin, ScorecardMixin,
         self.active_dist = "300y-nra"
         self.active_rings, self.active_mu = build_dist_config("300y-nra")
 
+        # Restore persisted state before building the UI so all view constructors
+        # read the correct values (presets, shoot_len, show_rec, etc.).
+        self._load_persisted_state()
+
         # ── Build UI ───────────────────────────────────────────────────────────
         self.root = tk.Tk()
         self.root.title("TargetSheet — DCRA Fullbore")
@@ -127,6 +133,7 @@ class TargetSheetApp(MenuMixin, TargetMixin, ScorecardMixin,
         self.active_rings, self.active_mu = build_dist_config(dist_key)
         self._dist_label_var.set(dist_key)
         self._redraw_target()
+        self._save_settings()
         self.show_screen("target")
 
     def _back_to_menu(self):
@@ -166,15 +173,19 @@ class TargetSheetApp(MenuMixin, TargetMixin, ScorecardMixin,
         if self.analysis_idx == "current":
             self.analysis_idx = len(self.strings)
         self.strings.append({
-            "shots":     list(self.shots),
-            "cv":        self.conv,
-            "dist":      self.active_dist,
-            "mu":        self.active_mu,
-            "shoot_len": self.shoot_len,
+            "shots":         list(self.shots),
+            "cv":            self.conv,
+            "dist":          self.active_dist,
+            "mu":            self.active_mu,
+            "shoot_len":     self.shoot_len,
+            "target_number": self.target_number,
+            "saved_at":      datetime.datetime.now().isoformat(timespec="seconds"),
         })
-        self.shots = []
-        self.conv  = "none"
-        self.conv_chosen = False
+        self.shots        = []
+        self.conv         = "none"
+        self.conv_chosen  = False
+        self._save_scorecards()
+        self._save_session()   # shots is now [] → writes None (clears session file)
         self.render()
         self.show_screen("scorecard")
 
@@ -184,6 +195,7 @@ class TargetSheetApp(MenuMixin, TargetMixin, ScorecardMixin,
             self.wind_val = r["w"]
             self.elev_val = r["e"]
             self._update_controls()
+            self._save_session()
 
     def _compute_labels(self, shots: list[dict], cv: str) -> list[str]:
         """Display labels for each shot, accounting for sighter conversion."""
@@ -258,3 +270,77 @@ class TargetSheetApp(MenuMixin, TargetMixin, ScorecardMixin,
             "e": clamp(snap(self.elev_val + mean_y / mu)),
             "n": n,
         }
+
+    # ── Persistence helpers ─────────────────────────────────────────────────────
+
+    def _load_persisted_state(self):
+        """Restore all persisted state from disk before the UI is built."""
+        # Settings — apply before presets/scorecards so defaults are sane
+        s = storage.load_settings()
+        self.show_rec    = s["show_rec"]
+        self.show_graphs = s["show_graphs"]
+        self.shoot_len   = s["shoot_len"]
+        dist = s["active_dist"]
+        if dist in TARGET_CONFIGS:
+            self.active_dist  = dist
+            self.active_rings, self.active_mu = build_dist_config(dist)
+
+        # Presets
+        self.presets = storage.load_presets(list(TARGET_CONFIGS))
+
+        # Saved scorecards
+        self.strings = storage.load_scorecards()
+
+        # In-progress session — overrides active_dist from settings if present
+        sess = storage.load_session()
+        if sess:
+            self.shots       = sess["shots"]
+            self.conv        = sess["conv"]
+            self.conv_chosen = sess["conv_chosen"]
+            sess_dist        = sess["active_dist"]
+            if sess_dist in TARGET_CONFIGS:
+                self.active_dist  = sess_dist
+                self.active_rings, self.active_mu = build_dist_config(sess_dist)
+            self.wind_val      = float(sess["wind_val"])
+            self.elev_val      = float(sess["elev_val"])
+            self.target_number = str(sess.get("target_number", ""))
+
+    def _save_settings(self):
+        try:
+            storage.save_settings({
+                "show_rec":    self.show_rec,
+                "show_graphs": self.show_graphs,
+                "shoot_len":   self.shoot_len,
+                "active_dist": self.active_dist,
+            })
+        except IOError:
+            self._toast("Warning: settings could not be saved.")
+
+    def _save_session(self):
+        try:
+            if self.shots:
+                storage.save_session({
+                    "shots":         self.shots,
+                    "conv":          self.conv,
+                    "conv_chosen":   self.conv_chosen,
+                    "active_dist":   self.active_dist,
+                    "wind_val":      self.wind_val,
+                    "elev_val":      self.elev_val,
+                    "target_number": self.target_number,
+                })
+            else:
+                storage.save_session(None)
+        except IOError:
+            self._toast("Warning: session could not be saved.")
+
+    def _save_scorecards(self):
+        try:
+            storage.save_scorecards(self.strings)
+        except IOError:
+            self._toast("Warning: scorecard could not be saved.")
+
+    def _save_presets(self):
+        try:
+            storage.save_presets(self.presets)
+        except IOError:
+            pass  # don't show a toast on every keystroke in the presets form

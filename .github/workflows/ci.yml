@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  analyze-and-test:
+    name: Analyze & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Install app dependencies
+        run: flutter pub get
+        working-directory: target_sheet_flutter
+
+      - name: Analyze app
+        run: flutter analyze --fatal-infos
+        working-directory: target_sheet_flutter
+
+      - name: Test app
+        run: flutter test
+        working-directory: target_sheet_flutter
+
+      - name: Install core dependencies
+        run: dart pub get
+        working-directory: target_sheet_flutter/packages/targetsheet_core
+
+      - name: Analyze core
+        run: dart analyze --fatal-infos
+        working-directory: target_sheet_flutter/packages/targetsheet_core
+
+      - name: Test core
+        run: dart test
+        working-directory: target_sheet_flutter/packages/targetsheet_core

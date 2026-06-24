@@ -13,11 +13,20 @@ dependencies:
   go_router: ^14.0.0
   targetsheet_core:
     path: packages/targetsheet_core
+  drift: ^2.20.0
+  sqlite3_flutter_libs: ^0.5.0
+  path_provider: ^2.1.0
+  path: ^1.9.0
+  uuid: ^4.0.0
+  supabase_flutter: ^2.7.0
+  shared_preferences: ^2.3.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  drift_dev: ^2.20.0
+  build_runner: ^2.4.0
 
 flutter:
   uses-material-design: true

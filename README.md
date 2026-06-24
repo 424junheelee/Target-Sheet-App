@@ -1,143 +1,130 @@
-[README.md](https://github.com/user-attachments/files/28922311/README.md)
 # TargetSheet
 
-**A desktop app for recording and analysing fullbore target-rifle strings.**
-
-TargetSheet is a [Tkinter](https://docs.python.org/3/library/tkinter.html) application for DCRA / NRA fullbore marksmanship. It lets you plot each shot on a regulation target face, track the wind and elevation you've dialled, get a "dial-to" correction that would centre your group, and review finished strings on a scorecard with per-shot wind & elevation graphs.
-
-It covers all standard **Bisley yard distances (300–1000 y)** and **DCRA metric distances (300–1000 m)**, with correct **NRA** and **ICFRA** ring sizes for each distance.
+**A fullbore target-rifle scoring and analysis app for DCRA / NRA shooters.**
 
 ---
 
-## Features
+## Migration status
 
-- **Live target face** — plot shots on a regulation target with an MOA grid, scoring rings, and shot markers. Zoom and pan the canvas.
-- **Two scoring standards** — NRA (UK, Bisley) Figure 11/12 faces and ICFRA TR faces (used by DCRA), in both yards and metres.
-- **Sighters with conversion** — fire Sighter A and Sighter B, then convert none / B / A+B into your scored string, with the shot count and totals adjusting automatically.
-- **Dial-to recommendation** — TargetSheet computes the wind/elevation that would have centred your current group and offers to apply it.
-- **Wind & elevation graphs** — per-shot suggested-correction graphs alongside the target, both live while shooting and on the finished scorecard.
-- **Shot calls** — annotate each shot (pull high/low/left/right, good, bad).
-- **Scorecard** — saved strings shown as per-string cards with aggregate totals and V-bull counts; discard in-progress or delete saved strings.
-- **Analysis view** — replay any saved string on an interactive target with statistics and finished graphs.
-- **Sight presets** — save aperture/elevation settings per distance configuration.
-- **Match length** — choose 10- or 15-shot strings.
+The original Python/Tkinter proof-of-concept has been fully ported to Flutter.
+The Flutter app is now the primary development target.
 
----
-
-## Requirements
-
-- **Python 3.8+**
-- **Tkinter** — ships with the Python standard library. It's included by default on Windows and macOS. On some Linux distributions you may need to install it separately (e.g. `sudo apt install python3-tk`).
-
-No third-party packages are required.
+| Phase | Status | Notes |
+|---|---|---|
+| Phase 1 — Local-first core (Flutter port) | **Complete** | Full feature parity with Tkinter + extras |
+| Phase 2A — Decimal scoring (ISSF 10 m) | **Complete** | Air rifle face, inner-10 decimal algorithm |
+| Phase 2B — Supabase auth + account sync | **Complete** | Auth screens, offline mode, Settings sign-in |
+| Phase 2C — PowerSync offline sync | Pending | Local DB is sync-ready; PowerSync not yet wired |
+| Phase 3+ — Shared scorecard / register-keeping | Planned | See ROADMAP.md |
 
 ---
 
-## Running
+## Flutter app (`target_sheet_flutter/`)
 
-From the project folder:
+The primary app. Cross-platform (Windows, macOS, Linux, iOS, Android, web).
+
+### What's built
+
+- **Live target canvas** — plot shots on any regulation face; zoom and pan with pinch/scroll; drag-to-place with real-time scoring
+- **22 target faces** — NRA (UK Bisley) Fig 11/12, ICFRA TR (DCRA) in yards and metres at 300–1000, plus ISSF 10 m air rifle
+- **Decimal scoring** — ISSF inner-10 mode (10.9 at centre, −0.1 per 0.25 mm out) for the air rifle face
+- **Sighters with conversion** — A/B sighters; convert none/B/A+B into scored count; labels and totals update automatically
+- **Dial-to recommendation** — computes the wind/elevation that would centre your group; one-tap apply
+- **Wind & elevation graphs** — per-shot suggested-correction graphs, live during shooting and in the analysis view
+- **Shot calls** — annotate each shot (↑↓←→ ✓✕)
+- **Draft auto-save** — in-progress string survives an app restart
+- **Scorecard list** — saved strings with score totals and V-bull counts; tap to open analysis
+- **Analysis view** — interactive zoom/pan target canvas, extreme spread, mean radius (both in MOA), call breakdown, shot table, and ballistic graphs per saved string
+- **Sight presets** — save wind/elevation/aperture per target face; one-tap apply
+- **Options** — default match length (10/15), show/hide dial-to and graphs toggles
+- **Auth / sync** — Supabase Auth integration; sign up, sign in, offline mode; "Sign in later" from Options; `owner_id` on all rows for future PowerSync sync
+
+### Stack
+
+| Layer | Choice |
+|---|---|
+| UI | Flutter 3.44.3 / Dart 3.12.2 |
+| State | Riverpod 2 (`AsyncNotifier` / `ConsumerWidget`) |
+| Routing | go_router |
+| Local DB | drift + SQLite (`targetsheet.db`) |
+| Auth | supabase_flutter 2.15 |
+| Offline flag | shared_preferences |
+| Core logic | `packages/targetsheet_core/` (pure Dart, no Flutter) |
+
+### Repository layout
+
+```
+target_sheet_flutter/
+├── lib/
+│   ├── auth/              auth provider + prefs helpers
+│   ├── data/              drift database, scorecard & preset repositories
+│   ├── providers/         session state, options state
+│   ├── rendering/         target painter, shot painter, graph painter, view controller
+│   ├── screens/
+│   │   ├── auth/          first-run, sign-in, sign-up screens
+│   │   ├── menu/          main menu
+│   │   ├── options/       options + sight presets
+│   │   ├── scorecard_list/ list + analysis view
+│   │   ├── select/        distance / standard picker
+│   │   └── shoot/         live shoot screen + target canvas
+│   ├── router.dart        go_router config with auth redirect
+│   └── main.dart          Supabase.initialize + ProviderScope
+└── packages/
+    └── targetsheet_core/  pure Dart — scoring, geometry, analysis, disciplines
+        ├── geometry/       MOA math, model ↔ screen transforms
+        ├── disciplines/    TargetFace models + all 22 face definitions
+        ├── scoring/        ring scoring, sighter conversion, dial-to
+        └── analysis/       group stats, graph series, windLabel/elevLabel
+```
+
+### Running locally
 
 ```bash
-python target_sheet.py
+cd target_sheet_flutter
+flutter pub get
+flutter run -d windows   # or macos / linux / chrome
 ```
 
-That's the only entry point — it launches the GUI.
+Supabase credentials are in `lib/main.dart`. The app works fully offline — first-run offers "Use offline" which skips auth entirely. Supabase is only required for cross-device sync.
+
+### Tests
+
+```bash
+cd target_sheet_flutter
+flutter test                               # widget tests
+cd packages/targetsheet_core
+dart test                                  # 109 unit tests
+```
+
+### Coordinate system (invariant)
+
+- **Model space:** real-world millimetres, origin = target centre, x = right (windage), y = UP (elevation).
+- **Screen space:** `Matrix4` transform applied at paint time flips y and applies scale + pan.
+- Units (yd/m, inch, MOA) are display-only converters. Stored values are always mm.
 
 ---
 
-## Usage
+## Python reference app (`TargetSheet/`)
 
-1. **Main menu** — choose a distance, view the scorecard, open options, or resume an in-progress string.
-2. **Select distance** — pick a distance and standard (e.g. `600y — NRA / Bisley`, `700m — DCRA (ICFRA metric)`).
-3. **Shoot the string:**
-   - Fire **Sighter A**, then **Sighter B**, then your scored shots.
-   - Tap on the target face to place each shot; it's scored automatically by which ring it lands in.
-   - Adjust the **wind** and **elevation** dials as you go (values snap to 0.25 increments).
-   - Optionally choose a **conversion** (convert B, or A+B, into the scored count).
-   - Use the **dial-to recommendation** to centre your group, and add **shot calls** as needed.
-4. **Save to Scorecard** — commit the finished string.
-5. **Scorecard** — review per-string cards and aggregate totals; tap a string to open **Analysis**.
-6. **Options / Presets** — toggle the recommendation and the wind & elevation graphs, set match length, and save per-distance sight presets.
+The original Tkinter proof-of-concept. **Do not modify.** It remains in the repository as the authoritative reference for ring geometry constants, scoring edge cases, and algorithm behaviour. The CLAUDE.md invariant applies: _the Python source wins over ROADMAP §15 and this file for any constant or algorithm_.
 
-### Key concepts
+### Running
 
-- **Sighters & conversion.** Every string starts with two sighters (A, B). The *conversion* setting controls whether none, just B, or both A+B count toward your total — the scored-shot count and labels update to match.
-- **Scoring.** A shot's score is the innermost ring that contains it (`V`/`5`/`4`/`3`/`2`, or `M` for a miss). `V` counts as 5 points and is tracked separately as a V-bull.
-- **Dial-to recommendation.** From the mean position of your current group, TargetSheet computes the wind/elevation that would have centred it (using MOA-per-distance scaling) and can apply it to your dials.
-- **Wind & elevation graphs.** Each graph plots, per shot, the *suggested* correction that would have centred that shot — a quick visual read on how your group is trending.
+```bash
+python TargetSheet/target_sheet.py
+```
+
+Requires Python 3.8+ with Tkinter (included in the standard library on Windows and macOS).
 
 ---
 
-## Supported targets
+## Key documents
 
-Ring sizes are sourced from NRA (UK) TR Figure 11/12, the ICFRA TR Technical Rules (2019), and NRAA targets & scoring documentation.
-
-| Standard | Distances | Target face |
-|----------|-----------|-------------|
-| **NRA / Bisley** | 300y (Fig 11), 500–1000y (Fig 12) | NRA TR yard faces |
-| **DCRA (ICFRA)** — yards | 300y, 500–1000y | ICFRA short/mid/long-range faces on Bisley yard distances |
-| **DCRA (ICFRA metric)** | 300m, 500–1000m | ICFRA faces at DCRA domestic (Connaught) distances |
-
-Each distance maps to the correct ICFRA face band — short range (~300 m), mid range (~500–600 m), or long range (~700 m+).
-
----
-
-## Project structure
-
-TargetSheet is a single Tkinter app split into small, focused modules. The UI is composed from **mixin classes** — one per screen — that are combined into the single `TargetSheetApp`.
-
-```
-TargetSheet/
-├── target_sheet.py   # Entry point — launches TargetSheetApp
-├── app.py            # TargetSheetApp: state, navigation, scoring/string logic, options
-├── constants.py      # Target geometry, canvas scale, colour palette
-├── scoring.py        # Pure scoring/formatting helpers + shot-call glyphs
-├── targets.py        # Ring specs, TARGET_CONFIGS, build_dist_config()
-├── graphs.py         # Shared ballistic-graph drawing (wind / elevation)
-└── views/            # Per-screen UI mixins
-    ├── menu.py       # MenuMixin       — main menu + distance/match-length select
-    ├── target.py     # TargetMixin     — live target face, controls, ballistic graphs
-    ├── scorecard.py  # ScorecardMixin  — saved series cards, discard/delete
-    ├── analysis.py   # AnalysisMixin   — per-series interactive target + finished graphs
-    └── settings.py   # SettingsMixin   — options + saved presets
-```
-
-### Architecture
-
-`TargetSheetApp` ([app.py](app.py)) inherits from all five view mixins:
-
-```python
-class TargetSheetApp(MenuMixin, TargetMixin, ScorecardMixin,
-                     AnalysisMixin, SettingsMixin):
-    ...
-```
-
-All **application state** lives on the `TargetSheetApp` instance; each mixin only contributes the methods that build and drive one screen, reading and writing that shared state via `self`. Every screen frame is built once at startup and shown/hidden by name through `show_screen()`.
-
-> **Note:** because the mixins reference attributes defined on sibling mixins, a static type checker analysing one mixin in isolation will report "unknown attribute" warnings. These are expected with this composition pattern and aren't runtime errors.
-
-### Data model
-
-A **shot** is a dict:
-
-| Field | Type | Meaning |
-|-------|------|---------|
-| `x`, `y` | float | Target (SVG) coordinates of the shot |
-| `sc` | int | Score (0–5) |
-| `iv` | bool | True if a V-bull |
-| `lb` | str | Score label (`V`/`5`/`4`/`3`/`2`/`M`) |
-| `tp` | str | Shot type: `A` \| `B` \| `sc` |
-| `w`, `e` | float | Wind / elevation dialled at the time of the shot |
-| `cl` | str \| None | Shot-call key, or None |
-
-A **string** bundles its shots with the conversion setting (`cv`), distance key (`dist`), MOA scale (`mu`), and match length.
-
----
-
-## Notes & limitations
-
-- **In-memory only.** Strings, presets, and options live in memory for the current session — there is no save-to-disk persistence yet. Closing the app clears recorded strings.
-- **Desktop GUI.** The window is sized for a tablet-style layout (default 1080×720, min 940×640).
+| File | Purpose |
+|---|---|
+| `CLAUDE.md` | Coding principles and conventions for all agents and contributors |
+| `ROADMAP.md` | Full product vision and phase map (Phases 1–6 + Coaching) |
+| `PLAN.md` | Phase 1 source inventory, ring constants, algorithm details, increment ladder |
 
 ---
 

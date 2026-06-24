@@ -245,26 +245,43 @@ Graph: elevation graph shows shots left→right, elev on vertical axis. Wind gra
 
 ## 10. Increment Ladder
 
+**Phase 1 status: COMPLETE.** All 16 increments shipped. `flutter analyze` clean; 110 tests passing (1 widget + 109 core).
+
 Each increment: implement → `flutter analyze` clean → `flutter test` green → visual check (if UI) → commit.
 
-| # | Increment | Key files | Success check |
-|---|-----------|-----------|---------------|
-| 1 | Scaffold monorepo; CLAUDE.md; CI | `CLAUDE.md`, `PLAN.md`, `packages/targetsheet_core/`, `.github/workflows/ci.yml`, updated `pubspec.yaml` | analyze + test green |
-| 2 | Core: coordinate system + MOA math | `core/lib/geometry/` | Unit tests for mm↔SVG, MOA at known distances |
-| 3 | Core: TargetFace / Ring models; seed NRA + DCRA | `core/lib/disciplines/` | Tests: seeded radii match §2 tables above |
-| 4 | Core: scoring + sighters + V-bull | `core/lib/scoring/` | Table-driven tests: boundary just-in/out every ring; conversion renumber/total |
-| 5 | Core: group mean, dial-to, graph series | `core/lib/analysis/` | Tests with known group → known correction |
-| 6 | App: static target painter | `lib/rendering/target_painter.dart` | Golden tests per face/distance |
-| 7 | App: zoom/pan controller | `lib/interaction/` | Visual: focal zoom, fit/+/-, clamping |
-| 8 | App: dynamic painter + drag-drop + loupe + undo/redo | `lib/rendering/shot_painter.dart`, `lib/interaction/` | Widget tests; repaint rainbow confirms static layer still |
-| 9 | App: shot-call entry, dial state + snap, apply | `lib/screens/shoot/` | Dial snaps to 0.25; apply updates state |
-| 10 | App: live scorecard panel + totals/V-count | `lib/screens/shoot/` | ← MVP gate: working string on correct face |
-| 11 | App: wind + elevation graphs | `lib/rendering/graph_painter.dart` | Matches source graph formula (§8 above) |
-| 12 | Data: drift schema + repositories + persistence + legacy import | `lib/data/` | Round-trip test; legacy scorecards.json loads |
-| 13 | App: scorecard list + analysis/replay + stats | `lib/screens/` | |
-| 14 | App: options + sight presets | `lib/screens/` | |
-| 15 | App: distance/standard select + menu + responsive layout | `lib/screens/` | Phone tabbed, tablet side-by-side |
-| 16 | JSON export/import; accessibility; store-readiness pass | | Round-trip lossless |
+| # | Increment | Status |
+|---|-----------|--------|
+| 1 | Scaffold monorepo; CLAUDE.md; CI | ✅ |
+| 2 | Core: coordinate system + MOA math | ✅ |
+| 3 | Core: TargetFace / Ring models; seed NRA + DCRA (21 faces) | ✅ |
+| 4 | Core: scoring + sighters + V-bull | ✅ |
+| 5 | Core: group mean, dial-to, graph series | ✅ |
+| 6 | App: static target painter | ✅ |
+| 7 | App: zoom/pan controller | ✅ |
+| 8 | App: dynamic painter + shot placement + undo | ✅ |
+| 9 | App: shot-call entry, dial state + snap, apply | ✅ |
+| 10 | App: live scorecard panel + totals/V-count | ✅ |
+| 11 | App: wind + elevation graphs | ✅ |
+| 12 | Data: drift schema v1–v4 + repositories + draft save/restore | ✅ |
+| 13 | App: scorecard list + analysis view (canvas, ES/MR, call breakdown, graphs, shot table) | ✅ |
+| 14 | App: options (toggles, shoot length) + sight presets (save/apply/delete, aperture field) | ✅ |
+| 15 | App: distance/standard select + menu (resume draft) + responsive layout | ✅ |
+| 16 | Target number prompt on commit; show/hide rec & graphs toggles; autoDispose scorecards provider | ✅ |
+
+**Phase 2 additions (beyond Phase 1 scope):**
+
+| Item | Status |
+|---|---|
+| `Ring.score` → `double`; `ScoringMode` enum seam | ✅ |
+| ISSF 10 m air rifle face (22nd face); decimal scoring algorithm (10.9 inner-10) | ✅ |
+| DB schema v3: `aperture` on `sight_presets` | ✅ |
+| DB schema v4: `owner_id` on both tables | ✅ |
+| Supabase auth: `AuthNotifier`, `AppAuthState`, `AuthStatus` | ✅ |
+| First-run screen, sign-in screen, sign-up screen | ✅ |
+| go_router async redirect guard | ✅ |
+| Options ACCOUNT section (sign in / sign out from settings) | ✅ |
+| Menu screen auth status display | ✅ |
+| PowerSync offline sync | ⏳ next |
 
 ---
 

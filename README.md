@@ -35,13 +35,45 @@ No third-party packages are required.
 
 ## Running
 
-From the project folder:
+The application code lives in the `TargetSheet/` folder. From the repository root:
 
 ```bash
-python target_sheet.py
+python TargetSheet/target_sheet.py
 ```
 
 That's the only entry point — it launches the GUI.
+
+---
+
+## Testing
+
+The test suite covers scoring and target geometry, sighter conversion and
+totals, the dial recommendation, persistence, and every screen's render path.
+It drives a real Tk instance with the main loop suppressed, and redirects
+storage to a temporary directory so your saved scorecards are never touched.
+
+```bash
+python -m pytest
+```
+
+Requires `pytest`. Tests are skipped automatically where no display is
+available.
+
+---
+
+## Data storage
+
+Scorecards, the in-progress session, options and sight presets are saved as
+JSON in a per-user directory:
+
+| Platform | Location |
+|---|---|
+| Windows | `%APPDATA%\TargetSheet\` |
+| macOS | `~/Library/Application Support/TargetSheet/` |
+| Linux | `$XDG_DATA_HOME/TargetSheet/` (or `~/.local/share/TargetSheet/`) |
+
+Writes are atomic, and unreadable files fall back to defaults rather than
+stopping the app from starting.
 
 ---
 

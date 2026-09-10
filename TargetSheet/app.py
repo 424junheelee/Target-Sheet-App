@@ -1,9 +1,10 @@
 import datetime
 import tkinter as tk
+from tkinter import messagebox
 
 import storage
 from constants import COL
-from scoring import snap, clamp
+from scoring import score_shot, snap, clamp
 from targets import TARGET_CONFIGS, build_dist_config
 from views.menu import MenuMixin
 from views.target import TargetMixin
@@ -47,6 +48,12 @@ class TargetSheetApp(MenuMixin, TargetMixin, ScorecardMixin,
         self.analysis_idx              = None  # None | "current" | int
         self.current_screen: str   = "menu"
 
+        # Shot picked out in the score table, as an index into the string being
+        # shown.  The two screens show different strings, so they track it
+        # separately.  None means every shot draws normally.
+        self.selected_shot:    int | None = None   # live target
+        self.analysis_selected: int | None = None  # analysis view
+
         # Target-canvas zoom/pan
         self._zoom:       float = 1.0
         self._pan:        list  = [0.0, 0.0]
@@ -83,6 +90,7 @@ class TargetSheetApp(MenuMixin, TargetMixin, ScorecardMixin,
         self.root.title("TargetSheet — DCRA Fullbore")
         self.root.configure(bg=COL["bg"])
         self.root.geometry("1080x720")
+        self.root.bind("<Escape>", self._on_escape)
         self.root.minsize(940, 640)
 
         self._content = tk.Frame(self.root, bg=COL["bg"])
@@ -128,13 +136,42 @@ class TargetSheetApp(MenuMixin, TargetMixin, ScorecardMixin,
             self._render_analysis()
 
     def _select_distance(self, dist_key: str):
-        """Set the active distance config and switch to the target screen."""
+        """Set the active distance config and switch to the target screen.
+
+        Shot coordinates are stored relative to the target face, so the same
+        point falls in a different ring on a different face.  Changing distance
+        mid-string therefore has to re-score the shots already placed, which
+        can change the running total — so it is confirmed first.
+        """
+        rescoring = bool(self.shots) and dist_key != self.active_dist
+        if rescoring and not messagebox.askyesno(
+                "Change distance",
+                f"{len(self.shots)} shot(s) are already on the target.\n\n"
+                f"Switching to {dist_key} re-scores them against the new "
+                f"target face, which may change the total.\n\nContinue?",
+                parent=self.root):
+            return
+
         self.active_dist = dist_key
         self.active_rings, self.active_mu = build_dist_config(dist_key)
         self._dist_label_var.set(dist_key)
+
+        if rescoring:
+            self._rescore_shots()
+            self._save_session()
+            self._toast(f"{len(self.shots)} shot(s) re-scored for {dist_key}.")
+
         self._redraw_target()
         self._save_settings()
         self.show_screen("target")
+
+    def _rescore_shots(self):
+        """Re-evaluate every placed shot against the active target face."""
+        for shot in self.shots:
+            result = score_shot(shot["x"], shot["y"], self.active_rings)
+            shot["sc"] = result["sc"]
+            shot["iv"] = result["iv"]
+            shot["lb"] = result["lb"]
 
     def _back_to_menu(self):
         if self.shots:
@@ -149,7 +186,48 @@ class TargetSheetApp(MenuMixin, TargetMixin, ScorecardMixin,
 
     def set_analysis(self, key):
         self.analysis_idx = key
+        self.analysis_selected = None   # a different string is on screen now
         self.show_screen("analysis")
+
+    # ── Shot selection ──────────────────────────────────────────────────────────
+
+    def select_shot(self, idx: int | None):
+        """Pick out one shot of the live string, or clear with None.
+
+        Selecting the shot that is already selected clears it, so the same row
+        toggles the highlight off.
+        """
+        if idx is not None and not (0 <= idx < len(self.shots)):
+            idx = None
+        self.selected_shot = None if idx == self.selected_shot else idx
+        self._sync_shot_table_selection()
+        self._draw_shots()
+
+    def clear_shot_selection(self):
+        if self.selected_shot is not None:
+            self.selected_shot = None
+            self._sync_shot_table_selection()
+            self._draw_shots()
+
+    def select_analysis_shot(self, idx: int | None):
+        """Pick out one shot of the string being analysed, or clear with None."""
+        shots = self._analysis_shots()
+        if idx is not None and not (0 <= idx < len(shots)):
+            idx = None
+        self.analysis_selected = None if idx == self.analysis_selected else idx
+        self._redraw_analysis_face()
+
+    def clear_analysis_selection(self):
+        if self.analysis_selected is not None:
+            self.analysis_selected = None
+            self._redraw_analysis_face()
+
+    def _on_escape(self, _=None):
+        """Escape drops whichever selection the current screen is showing."""
+        if self.current_screen == "target":
+            self.clear_shot_selection()
+        elif self.current_screen == "analysis":
+            self.clear_analysis_selection()
 
     # ── Shared widgets ──────────────────────────────────────────────────────────
 
@@ -181,9 +259,10 @@ class TargetSheetApp(MenuMixin, TargetMixin, ScorecardMixin,
             "target_number": self.target_number,
             "saved_at":      datetime.datetime.now().isoformat(timespec="seconds"),
         })
-        self.shots        = []
-        self.conv         = "none"
-        self.conv_chosen  = False
+        self.shots         = []
+        self.conv          = "none"
+        self.conv_chosen   = False
+        self.selected_shot = None
         self._save_scorecards()
         self._save_session()   # shots is now [] → writes None (clears session file)
         self.render()

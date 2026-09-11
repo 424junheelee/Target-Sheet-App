@@ -9,6 +9,14 @@ from constants import COL
 
 GRAPH_PX_MOA = 24   # pixels per 1 MOA on the value axis
 
+# Axis type.  The shot axis is the cramped one — a 15-shot match packs 17
+# columns into a strip barely wider than the target's margin — so its labels
+# are thinned rather than shrunk.
+VALUE_FONT   = ("Courier", 8)
+SHOT_FONT    = ("Courier", 8)
+_SHOT_LBL_W  = 18   # px a horizontal shot number needs before it collides
+_SHOT_LBL_H  = 14   # px a stacked shot number needs before it collides
+
 
 def suggested(shot: dict, mu: float) -> tuple[float, float]:
     """(wind, elevation) that would have centred this individual shot."""
@@ -26,13 +34,27 @@ def _dims(canvas, fb_w: int, fb_h: int) -> tuple[int, int]:
     return w, h
 
 
+def _label_every(span_px: float, count: int, need_px: float) -> int:
+    """Label every Nth shot, so numbers stay readable instead of colliding.
+
+    Gridlines are still drawn for every shot; only the numbering is thinned.
+    """
+    if count < 2:
+        return 1
+    per = span_px / (count - 1)
+    for every in (1, 2, 5, 10):
+        if per * every >= need_px:
+            return every
+    return 10
+
+
 def draw_elev_graph(canvas, shots, mu, max_shots, fb_w, fb_h):
     """Vertical-value graph: elevation on the vertical axis (centred on shot 1),
     shots advancing left→right."""
     canvas.delete("all")
     w, h = _dims(canvas, fb_w, fb_h)
-    x0, x1 = 22, w - 6
-    y0, y1 = 18, h - 20
+    x0, x1 = 28, w - 8
+    y0, y1 = 18, h - 22
     cy = (y0 + y1) / 2
     center = round(suggested(shots[0], mu)[1]) if shots else 0
 
@@ -45,16 +67,18 @@ def draw_elev_graph(canvas, shots, mu, max_shots, fb_w, fb_h):
         canvas.create_line(x0, y, x1, y,
                            fill="#888" if off == 0 else "#e0e0e0",
                            width=1.0 if off == 0 else 0.5)
-        canvas.create_text(2, y, text=str(center + off), anchor="w",
+        canvas.create_text(3, y, text=str(center + off), anchor="w",
                            fill=COL["accent"] if off == 0 else COL["text2"],
-                           font=("Courier", 7, "bold" if off == 0 else "normal"))
+                           font=(*VALUE_FONT, "bold") if off == 0 else VALUE_FONT)
 
     step = (x1 - x0) / (max_shots - 1)
+    every = _label_every(x1 - x0, max_shots, _SHOT_LBL_W)
     for k in range(max_shots):
         x = x0 + k * step
         canvas.create_line(x, y0, x, y1, fill="#f0f0f0", width=0.4)
-        canvas.create_text(x, h - 10, text=str(k + 1), angle=90,
-                           fill=COL["text2"], font=("Courier", 6))
+        if k % every == 0:
+            canvas.create_text(x, h - 11, text=str(k + 1), anchor="center",
+                               fill=COL["text2"], font=SHOT_FONT)
 
     pts = []
     for i, shot in enumerate(shots[:max_shots]):
@@ -73,8 +97,8 @@ def draw_wind_graph(canvas, shots, mu, max_shots, fb_w, fb_h):
     shots advancing top→bottom."""
     canvas.delete("all")
     w, h = _dims(canvas, fb_w, fb_h)
-    x0, x1 = 26, w - 14
-    y0, y1 = 16, h - 18
+    x0, x1 = 30, w - 14
+    y0, y1 = 16, h - 20
     cx = (x0 + x1) / 2
     center = round(suggested(shots[0], mu)[0]) if shots else 0
 
@@ -87,16 +111,18 @@ def draw_wind_graph(canvas, shots, mu, max_shots, fb_w, fb_h):
         canvas.create_line(x, y0, x, y1,
                            fill="#888" if off == 0 else "#e0e0e0",
                            width=1.0 if off == 0 else 0.5)
-        canvas.create_text(x, h - 8, text=str(center + off), anchor="center",
+        canvas.create_text(x, h - 9, text=str(center + off), anchor="center",
                            fill=COL["accent"] if off == 0 else COL["text2"],
-                           font=("Courier", 7, "bold" if off == 0 else "normal"))
+                           font=(*VALUE_FONT, "bold") if off == 0 else VALUE_FONT)
 
     step = (y1 - y0) / (max_shots - 1)
+    every = _label_every(y1 - y0, max_shots, _SHOT_LBL_H)
     for k in range(max_shots):
         y = y0 + k * step
         canvas.create_line(x0, y, x1, y, fill="#f0f0f0", width=0.4)
-        canvas.create_text(3, y, text=str(k + 1), anchor="w",
-                           fill=COL["text2"], font=("Courier", 6))
+        if k % every == 0:
+            canvas.create_text(4, y, text=str(k + 1), anchor="w",
+                               fill=COL["text2"], font=SHOT_FONT)
 
     pts = []
     for i, shot in enumerate(shots[:max_shots]):

@@ -6,6 +6,22 @@ from constants import COL, R, VB
 from scoring import wind_label, elev_label, CALL_GLYPHS
 from targets import TARGET_CONFIGS, build_dist_config
 import graphs
+import markers
+
+
+FACE_MIN = 500   # the face never shrinks below its original fixed size
+FACE_MAX = 760   # past this it dwarfs the statistics underneath it
+
+
+def fit_face_size(room_w: float, room_h: float,
+                  lo: int = FACE_MIN, hi: int = FACE_MAX) -> int:
+    """Side length for the square target face given the room available.
+
+    Grows with the window, but never below *lo* — the size the face used to be
+    pinned at — so a small window is no worse off than before, and never above
+    *hi*, so a large one doesn't push the statistics off the screen.
+    """
+    return int(max(lo, min(room_w, room_h, hi)))
 
 
 class AnalysisMixin:
@@ -33,16 +49,19 @@ class AnalysisMixin:
     def _draw_analysis_target(self, parent, shots: list[dict], cv: str,
                               mu: float, dist: str = "", max_shots: int = 12):
         """Render an interactive target with ballistic graphs laid out as on the
-        live target: elevation graph to the right, wind graph below."""
-        SIZE    = 500
-        EW, WH  = 150, 150        # elevation-graph width, wind-graph height
-        BASE_SC = SIZE / (VB * 2)
-        half    = SIZE / 2
+        live target: elevation graph to the right, wind graph below.
+
+        The target face grows with the window (staying square, and capped so it
+        does not tower over the stats below it); the graph strips keep a fixed
+        short axis and stretch along their shot axis.
+        """
+        EW, WH   = 150, 150   # elevation-graph width, wind-graph height
+        MIN_SIZE = FACE_MIN   # also the fallback before layout has settled
         dist_key = dist if dist in TARGET_CONFIGS else "300y-nra"
         rings, _ = build_dist_config(dist_key)
 
         wrapper = tk.Frame(parent, bg=COL["bg"])
-        wrapper.pack(pady=(10, 4))
+        wrapper.pack(fill="x", padx=16, pady=(10, 4))
 
         ctrl_row = tk.Frame(wrapper, bg=COL["bg"])
         ctrl_row.pack(fill="x", pady=(0, 3))
@@ -58,34 +77,50 @@ class AnalysisMixin:
 
         # Target face + elevation graph to its right
         tgt_row = tk.Frame(wrapper, bg=COL["bg"])
-        tgt_row.pack(anchor="w")
-        canvas = tk.Canvas(tgt_row, width=SIZE, height=SIZE,
+        tgt_row.pack(fill="x")
+        canvas = tk.Canvas(tgt_row, width=MIN_SIZE, height=MIN_SIZE,
                            bg=COL["target_bg"], bd=0, highlightthickness=1,
                            highlightbackground=COL["border"], cursor="fleur")
         canvas.pack(side="left")
-        elev_c = tk.Canvas(tgt_row, width=EW, height=SIZE, bg=COL["target_bg"],
-                           bd=0, highlightthickness=1,
+        elev_c = tk.Canvas(tgt_row, width=EW, height=MIN_SIZE,
+                           bg=COL["target_bg"], bd=0, highlightthickness=1,
                            highlightbackground=COL["border"])
         elev_c.pack(side="left", padx=(6, 0))
 
-        # Wind graph below the target face
-        wind_c = tk.Canvas(wrapper, width=SIZE, height=WH, bg=COL["target_bg"],
-                           bd=0, highlightthickness=1,
+        # Wind graph below the target face, kept exactly as wide as the face
+        # plus the elevation strip so the two line up.
+        wind_c = tk.Canvas(wrapper, width=MIN_SIZE + EW + 6, height=WH,
+                           bg=COL["target_bg"], bd=0, highlightthickness=1,
                            highlightbackground=COL["border"])
         wind_c.pack(anchor="w", pady=(6, 0))
 
-        graphs.draw_elev_graph(elev_c, shots, mu, max_shots, EW, SIZE)
-        graphs.draw_wind_graph(wind_c, shots, mu, max_shots, SIZE, WH)
+        def face():
+            """Current face size in pixels, before layout has settled too."""
+            w, h = canvas.winfo_width(), canvas.winfo_height()
+            if w < 5:
+                w = MIN_SIZE
+            if h < 5:
+                h = MIN_SIZE
+            return w, h
+
+        def marker_scale():
+            """Pixels per SVG unit for shot markers — zoom deliberately left
+            out, so zooming in spreads a tight group apart instead of
+            magnifying it into the same blob."""
+            w, h = face()
+            return min(w, h) / (VB * 2)
 
         def eff():
-            sc = BASE_SC * self._a_zoom
-            return sc, half + self._a_pan[0], half + self._a_pan[1]
+            w, h = face()
+            sc = marker_scale() * self._a_zoom
+            return sc, w / 2 + self._a_pan[0], h / 2 + self._a_pan[1]
 
         def draw():
             canvas.delete("all")
+            w, h = face()
             sc, cx, cy = eff()
 
-            canvas.create_rectangle(0, 0, SIZE, SIZE,
+            canvas.create_rectangle(0, 0, w, h,
                                     fill=COL["target_bg"], outline="")
 
             highlight = round(R / mu)
@@ -99,8 +134,8 @@ class AnalysisMixin:
                     colour, lw = "#999", 0.6
                 else:
                     colour, lw = "#ccc", 0.4
-                canvas.create_line(0, gy, SIZE, gy, fill=colour, width=lw)
-                canvas.create_line(gx, 0, gx, SIZE, fill=colour, width=lw)
+                canvas.create_line(0, gy, w, gy, fill=colour, width=lw)
+                canvas.create_line(gx, 0, gx, h, fill=colour, width=lw)
 
             ext = VB * sc
             canvas.create_line(cx-ext, cy-ext, cx+ext, cy+ext,
@@ -119,44 +154,34 @@ class AnalysisMixin:
                 canvas.create_oval(cx-r_px, cy-r_px, cx+r_px, cy+r_px,
                                    outline=COL["target_ink"], width=lw)
 
-            canvas.create_rectangle(0, 0, SIZE, SIZE, outline="#555", width=1)
-            canvas.create_text(4, 3, text=f"1 MOA · {dist}", anchor="nw",
-                               fill="#aaa", font=("Courier", 6))
+            canvas.create_rectangle(0, 0, w, h, outline="#555", width=1)
+            canvas.create_text(5, 4, text=f"1 MOA · {dist}", anchor="nw",
+                               fill="#aaa", font=("Courier", 8))
 
-            labels = self._compute_labels(shots, cv)
-            r_px   = 6.5 * sc
-            for shot, lbl in zip(shots, labels):
-                spx = shot["x"] * sc + cx
-                spy = shot["y"] * sc + cy
-                sg  = shot["tp"] in ("A", "B")
-                cvt = ((shot["tp"] == "A" and cv == "ab") or
-                       (shot["tp"] == "B" and cv in ("b", "ab")))
-                fill_col = COL["gray_shot"] if (sg and not cvt) else COL["red_shot"]
-                ring_col = COL["gray_ring"] if (sg and not cvt) else COL["gold_ring"]
-                text_col = "#374151"        if (sg and not cvt) else "white"
-
-                if shot["iv"]:
-                    vr = 9.5 * sc
-                    canvas.create_oval(spx-vr, spy-vr, spx+vr, spy+vr,
-                                       outline=ring_col, width=2)
-                canvas.create_oval(spx-r_px, spy-r_px, spx+r_px, spy+r_px,
-                                   fill=fill_col, outline="")
-                font_sz = max(5, int(6 * sc))
-                canvas.create_text(spx, spy, text=lbl, fill=text_col,
-                                   font=("Courier", font_sz, "bold"))
+            selected = self.analysis_selected
+            if selected is not None and not (0 <= selected < len(shots)):
+                selected = None
+            markers.draw_shots(
+                canvas, shots, self._compute_labels(shots, cv), cv,
+                lambda x, y: (x * sc + cx, y * sc + cy), marker_scale(),
+                selected=selected,
+            )
 
         _drag: dict = {}
 
         def on_zoom(event):
+            w, h     = face()
+            hx, hy   = w / 2, h / 2
             factor   = 1.15 if event.delta > 0 else 1 / 1.15
             new_zoom = max(0.5, min(8.0, self._a_zoom * factor))
             actual   = new_zoom / self._a_zoom
-            self._a_pan[0] = event.x - half - (event.x - half - self._a_pan[0]) * actual
-            self._a_pan[1] = event.y - half - (event.y - half - self._a_pan[1]) * actual
+            self._a_pan[0] = event.x - hx - (event.x - hx - self._a_pan[0]) * actual
+            self._a_pan[1] = event.y - hy - (event.y - hy - self._a_pan[1]) * actual
             self._a_zoom   = new_zoom
             draw()
 
         def on_pan_start(event):
+            self.clear_analysis_selection()
             _drag.update(x=event.x, y=event.y,
                          px=self._a_pan[0], py=self._a_pan[1])
 
@@ -172,6 +197,33 @@ class AnalysisMixin:
             self._a_pan  = [0.0, 0.0]
             draw()
 
+        def fit(event):
+            """Size the square face to fit the space the view actually has.
+
+            Bounded by width so it never pushes the wind graph off the side,
+            and by window height so the face plus its graphs stay visible
+            without scrolling before the statistics come into view.
+            """
+            size = fit_face_size(event.width - EW - 6,
+                                 self.root.winfo_height() - WH - 210)
+            if size == sized.get("px"):
+                return
+            sized["px"] = size
+            canvas.config(width=size, height=size)
+            elev_c.config(height=size)
+            wind_c.config(width=size + EW + 6)
+
+        sized: dict = {}
+        wrapper.bind("<Configure>", fit)
+
+        # Each canvas redraws itself from its own live size, so a resize needs
+        # no bookkeeping beyond re-firing the draw.
+        canvas.bind("<Configure>", lambda _: draw())
+        elev_c.bind("<Configure>", lambda _: graphs.draw_elev_graph(
+            elev_c, shots, mu, max_shots, EW, MIN_SIZE))
+        wind_c.bind("<Configure>", lambda _: graphs.draw_wind_graph(
+            wind_c, shots, mu, max_shots, MIN_SIZE, WH))
+
         reset_btn.config(command=lambda: on_reset(None))
         canvas.bind("<MouseWheel>",      on_zoom)
         canvas.bind("<Button-1>",        on_pan_start)
@@ -179,6 +231,9 @@ class AnalysisMixin:
         canvas.bind("<Double-Button-1>", on_reset)
 
         draw()
+        graphs.draw_elev_graph(elev_c, shots, mu, max_shots, EW, MIN_SIZE)
+        graphs.draw_wind_graph(wind_c, shots, mu, max_shots, MIN_SIZE, WH)
+        return draw
 
     def _render_analysis(self):
         for w in self._ac_inner.winfo_children():
@@ -229,8 +284,10 @@ class AnalysisMixin:
                  font=("Courier", 20, "bold")).pack(side="right")
         tk.Frame(self._ac_inner, bg=COL["border"], height=1).pack(fill="x", padx=16)
 
-        self._draw_analysis_target(self._ac_inner, str_shots, cv, mu, dist,
-                                   shoot_len + 2)
+        self._a_shots = str_shots
+        self._a_cv     = cv
+        self._a_redraw = self._draw_analysis_target(
+            self._ac_inner, str_shots, cv, mu, dist, shoot_len + 2)
 
         in_target = [s for s in str_shots if s["sc"] > 0]
         mpi = None
@@ -299,3 +356,53 @@ class AnalysisMixin:
         tree.tag_configure("odd",  background=COL["bg2"])
         tree.tag_configure("even", background=COL["bg"])
         tree.pack(fill="x", padx=16, pady=(0, 20))
+
+        self._a_tree = tree
+        tree.bind("<<TreeviewSelect>>", self._on_analysis_row_selected)
+        tree.bind("<Button-1>", self._on_analysis_row_clicked, add="+")
+        self._sync_analysis_tree_selection()
+
+    # ── Selecting a shot from the analysis score table ──────────────────────────
+
+    def _analysis_shots(self) -> list:
+        return getattr(self, "_a_shots", [])
+
+    def _redraw_analysis_face(self):
+        redraw = getattr(self, "_a_redraw", None)
+        if redraw is not None:
+            redraw()
+        self._sync_analysis_tree_selection()
+
+    def _on_analysis_row_selected(self, _=None):
+        """Idempotent for the same reason as the live target's handler —
+        <<TreeviewSelect>> arrives after our own selection_set has returned."""
+        tree = getattr(self, "_a_tree", None)
+        if tree is None or not tree.winfo_exists():
+            return
+        rows = tree.selection()
+        if not rows:
+            return
+        idx = tree.index(rows[0])
+        if idx != self.analysis_selected:
+            self.select_analysis_shot(idx)
+
+    def _on_analysis_row_clicked(self, event):
+        """Clicking the already-selected row toggles the highlight off."""
+        tree = getattr(self, "_a_tree", None)
+        if tree is None or not tree.winfo_exists():
+            return None
+        row = tree.identify_row(event.y)
+        if row and tree.index(row) == self.analysis_selected:
+            self.select_analysis_shot(None)
+            return "break"
+        return None
+
+    def _sync_analysis_tree_selection(self):
+        tree = getattr(self, "_a_tree", None)
+        if tree is None or not tree.winfo_exists():
+            return
+        rows = tree.get_children()
+        if self.analysis_selected is not None and self.analysis_selected < len(rows):
+            tree.selection_set(rows[self.analysis_selected])
+        elif rows:
+            tree.selection_remove(*rows)

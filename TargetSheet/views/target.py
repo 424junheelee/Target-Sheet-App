@@ -1,13 +1,14 @@
 import tkinter as tk
 from tkinter import ttk, simpledialog
 
-from constants import COL, R, VB, CANVAS_PX, MAXV
+from constants import COL, R, VB, CANVAS_PX, MAXV, SHOT_R
 from scoring import score_shot, wind_label, elev_label, snap, clamp, CALL_GLYPHS
 import graphs
+import markers
 
 # Ballistic-graph strip sizes (the short axis stays fixed; the long axis scales)
-ELEV_GRAPH_W = 128   # width of the vertical elevation graph (right of target)
-WIND_GRAPH_H = 116   # height of the horizontal wind graph (below target)
+ELEV_GRAPH_W = 152   # width of the vertical elevation graph (right of target)
+WIND_GRAPH_H = 132   # height of the horizontal wind graph (below target)
 
 
 class TargetMixin:
@@ -165,7 +166,7 @@ class TargetMixin:
                   font=("Helvetica", 14), relief="solid", bd=1, width=2,
                   cursor="hand2",
                   command=lambda: self.adj_wind(-1)).pack(side="left", padx=1)
-        self._wind_var = tk.StringVar(value="calm")
+        self._wind_var = tk.StringVar(value=wind_label(self.wind_val))
         wl = tk.Label(wf, textvariable=self._wind_var, bg=COL["bg"],
                       fg=COL["text2"], font=("Courier", 13, "bold"),
                       width=8, cursor="hand2")
@@ -187,7 +188,7 @@ class TargetMixin:
                   font=("Helvetica", 14), relief="solid", bd=1, width=2,
                   cursor="hand2",
                   command=lambda: self.adj_elev(-1)).pack(side="left", padx=1)
-        self._elev_var = tk.StringVar(value="0")
+        self._elev_var = tk.StringVar(value=elev_label(self.elev_val))
         el = tk.Label(ef, textvariable=self._elev_var, bg=COL["bg"],
                       fg=COL["text2"], font=("Courier", 13, "bold"),
                       width=8, cursor="hand2")
@@ -295,7 +296,44 @@ class TargetMixin:
         self._shot_tree.tag_configure("converted", foreground=COL["accent"])
         self._shot_tree.tag_configure("odd",       background=COL["bg2"])
         self._shot_tree.tag_configure("even",      background=COL["bg"])
+
+        # Picking a row highlights that shot on the face.
+        self._shot_tree.bind("<<TreeviewSelect>>", self._on_shot_row_selected)
+        self._shot_tree.bind("<Button-1>", self._on_shot_row_clicked, add="+")
+
         tk.Frame(parent, bg=COL["border"], height=1).pack(fill="x")
+
+    def _on_shot_row_selected(self, _=None):
+        """Follow the table's selection onto the face.
+
+        Kept idempotent rather than guarded by a flag: Tk delivers
+        <<TreeviewSelect>> after the call that caused it has returned, so a
+        flag set around our own selection_set would already be cleared by the
+        time this ran.  Doing nothing when the two already agree is immune to
+        that timing, and stops a sync from toggling the highlight off.
+        """
+        rows = self._shot_tree.selection()
+        if not rows:
+            return
+        idx = self._shot_tree.index(rows[0])
+        if idx != self.selected_shot:
+            self.select_shot(idx)
+
+    def _on_shot_row_clicked(self, event):
+        """Clicking the row that is already selected toggles it back off."""
+        row = self._shot_tree.identify_row(event.y)
+        if row and self._shot_tree.index(row) == self.selected_shot:
+            self.select_shot(None)
+            return "break"
+        return None
+
+    def _sync_shot_table_selection(self):
+        """Make the table's highlighted row match self.selected_shot."""
+        rows = self._shot_tree.get_children()
+        if self.selected_shot is not None and self.selected_shot < len(rows):
+            self._shot_tree.selection_set(rows[self.selected_shot])
+        elif rows:
+            self._shot_tree.selection_remove(*rows)
 
     def _build_action_row(self, parent):
         f = tk.Frame(parent, bg=COL["bg"])
@@ -336,6 +374,18 @@ class TargetMixin:
         cx   = w / 2 + self._pan[0]
         cy   = h / 2 + self._pan[1]
         return w, h, sc, cx, cy
+
+    def _marker_scale(self) -> float:
+        """Pixels per SVG unit for shot markers — the canvas scale with zoom
+        divided back out.
+
+        Shot *positions* zoom with the face, but marker size does not, so a
+        tight group spreads apart as you zoom in rather than staying one blob.
+        Markers still grow with the window so they stay proportionate on a
+        larger display.
+        """
+        _, _, sc, _, _ = self._metrics()
+        return sc / self._zoom
 
     def _to_canvas(self, x: float, y: float) -> tuple[float, float]:
         _, _, sc, cx, cy = self._metrics()
@@ -392,33 +442,18 @@ class TargetMixin:
 
     def _draw_shots(self):
         self._canvas.delete("shot")
-        labels = self._compute_labels(self.shots, self.conv)
-        _, _, sc, _, _ = self._metrics()
-
-        for shot, lbl in zip(self.shots, labels):
-            px, py = self._to_canvas(shot["x"], shot["y"])
-            sg  = shot["tp"] in ("A", "B")
-            cvt = ((shot["tp"] == "A" and self.conv == "ab") or
-                   (shot["tp"] == "B" and self.conv in ("b", "ab")))
-
-            fill_col = COL["gray_shot"] if (sg and not cvt) else COL["red_shot"]
-            ring_col = COL["gray_ring"] if (sg and not cvt) else COL["gold_ring"]
-            text_col = "#374151"        if (sg and not cvt) else "white"
-            r_px     = 6.5 * sc
-
-            if shot["iv"]:
-                vr = 9.5 * sc
-                self._canvas.create_oval(px-vr, py-vr, px+vr, py+vr,
-                                         outline=ring_col, width=2, tags="shot")
-            self._canvas.create_oval(px-r_px, py-r_px, px+r_px, py+r_px,
-                                     fill=fill_col, outline="", tags="shot")
-            font_sz = max(6, int(6 * sc))
-            self._canvas.create_text(px, py, text=lbl, fill=text_col,
-                                     font=("Courier", font_sz, "bold"), tags="shot")
+        selected = self.selected_shot
+        if selected is not None and not (0 <= selected < len(self.shots)):
+            selected = None
+        markers.draw_shots(
+            self._canvas, self.shots,
+            self._compute_labels(self.shots, self.conv), self.conv,
+            self._to_canvas, self._marker_scale(),
+            selected=selected, tags="shot",
+        )
 
     def _draw_shot_preview(self, px: float, py: float):
-        _, _, sc, _, _ = self._metrics()
-        r = 6.5 * sc
+        r = SHOT_R * self._marker_scale()
         self._canvas.create_oval(px-r, py-r, px+r, py+r,
                                  outline=COL["accent"], fill="", width=2,
                                  dash=(4, 3), tags="preview")
@@ -437,6 +472,7 @@ class TargetMixin:
 
     def _on_shot_press(self, event):
         self._canvas.focus_set()   # leaving the target-no. field stops its caret blink
+        self.clear_shot_selection()
         self._canvas.delete("preview")
         self._draw_shot_preview(event.x, event.y)
 
@@ -451,6 +487,7 @@ class TargetMixin:
             return
         if ph["tp"] == "sc" and not self.conv_chosen:
             self.conv_chosen = True
+        self.clear_shot_selection()
         svgx, svgy = self._to_svg(event.x, event.y)
         result = score_shot(svgx, svgy, self.active_rings)
         self.shots.append({
@@ -548,6 +585,9 @@ class TargetMixin:
     def undo_shot(self):
         if self.shots:
             self.shots.pop()
+            if (self.selected_shot is not None
+                    and self.selected_shot >= len(self.shots)):
+                self.selected_shot = None
             if len(self.shots) < 2:
                 self.conv_chosen = False
                 self.conv = "none"
@@ -582,7 +622,7 @@ class TargetMixin:
 
         self._update_call_buttons()
         self._refresh_shot_table()
-        self._update_rec_row()
+        self._update_controls()   # keeps the dial readout in step with state
         self._draw_ballistic_graphs()
 
     # ── Ballistic graphs (suggested wind / elevation per shot) ──────────────────
@@ -652,3 +692,4 @@ class TargetMixin:
                 wind_label(shot["w"]), elev_label(shot["e"]),
                 CALL_GLYPHS.get(shot["cl"], "") if shot["cl"] else "",
             ), tags=(tag, row_tag))
+        self._sync_shot_table_selection()

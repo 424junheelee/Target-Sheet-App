@@ -133,6 +133,7 @@ class ScorecardMixin:
         self.shots = []
         self.conv = "none"
         self.conv_chosen = False
+        self.selected_shot = None
         if self.analysis_idx == "current":
             self.analysis_idx = None
         self._save_session()   # shots is now [] → writes None (clears session file)

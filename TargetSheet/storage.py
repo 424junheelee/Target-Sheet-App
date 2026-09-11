@@ -163,17 +163,21 @@ def save_settings(opts: dict) -> None:
 
 
 def load_presets(all_keys: list) -> dict:
-    """Return presets dict; fills in any missing config keys with empty strings."""
+    """Return presets dict; fills in any missing config keys with empty strings.
+
+    Entries for faces no longer offered are kept too, so a preset is never
+    lost just because its distance was retired from the menu.
+    """
     default = {k: {"aperture": "", "elevation": ""} for k in all_keys}
     raw = _load("presets.json", {})
     if not isinstance(raw, dict):
         return default
     out = dict(default)
-    for k in all_keys:
-        if k in raw and isinstance(raw[k], dict):
+    for k, v in raw.items():
+        if isinstance(v, dict):
             out[k] = {
-                "aperture":  str(raw[k].get("aperture",  "")),
-                "elevation": str(raw[k].get("elevation", "")),
+                "aperture":  str(v.get("aperture",  "")),
+                "elevation": str(v.get("elevation", "")),
             }
     return out
 

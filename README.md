@@ -5,14 +5,15 @@
 
 TargetSheet is a [Tkinter](https://docs.python.org/3/library/tkinter.html) application for DCRA / NRA fullbore marksmanship. It lets you plot each shot on a regulation target face, track the wind and elevation you've dialled, get a "dial-to" correction that would centre your group, and review finished strings on a scorecard with per-shot wind & elevation graphs.
 
-It covers all standard **Bisley yard distances (300–1000 y)** and **DCRA metric distances (300–1000 m)**, with correct **NRA** and **ICFRA** ring sizes for each distance.
+It offers **NRA UK**, **ICFRA** and **DCRA** target faces at every distance each rule book defines, transcribed from the current rule books: the NRA UK Handbook 2026 (targets changed 1 January 2025), the ICFRA TR Technical Rules 2024, and the DCRA Rulebook 2024.
 
 ---
 
 ## Features
 
 - **Live target face** — plot shots on a regulation target with an MOA grid, scoring rings, and shot markers. Zoom and pan the canvas.
-- **Two scoring standards** — NRA (UK, Bisley) Figure 11/12 faces and ICFRA TR faces (used by DCRA), in both yards and metres.
+- **Three target standards** — NRA UK (Bisley), ICFRA and DCRA faces, in yards and metres, with each standard's own ring sizes, aiming mark and target frame.
+- **1-point Hit zone** — a shot on the target but outside the Outer ring scores 1, and a shot off the frame is a miss, as all three rule books specify.
 - **Sighters with conversion** — fire Sighter A and Sighter B, then convert none / B / A+B into your scored string, with the shot count and totals adjusting automatically.
 - **Dial-to recommendation** — TargetSheet computes the wind/elevation that would have centred your current group and offers to apply it.
 - **Wind & elevation graphs** — per-shot suggested-correction graphs alongside the target, both live while shooting and on the finished scorecard.
@@ -80,7 +81,7 @@ stopping the app from starting.
 ## Usage
 
 1. **Main menu** — choose a distance, view the scorecard, open options, or resume an in-progress string.
-2. **Select distance** — pick a distance and standard (e.g. `600y — NRA / Bisley`, `700m — DCRA (ICFRA metric)`).
+2. **Select distance** — pick a distance and standard (e.g. `600y — NRA UK`, `700m — ICFRA`, `900y — DCRA`).
 3. **Shoot the string:**
    - Fire **Sighter A**, then **Sighter B**, then your scored shots.
    - Tap on the target face to place each shot; it's scored automatically by which ring it lands in.
@@ -102,15 +103,19 @@ stopping the app from starting.
 
 ## Supported targets
 
-Ring sizes are sourced from NRA (UK) TR Figure 11/12, the ICFRA TR Technical Rules (2019), and NRAA targets & scoring documentation.
+Every face is transcribed from the current rule book of its standard. Ring sizes, the aiming mark and the 1-point Hit area all come from the same table, and `tests/test_target_specs.py` checks each one against an independent transcription.
 
-| Standard | Distances | Target face |
-|----------|-----------|-------------|
-| **NRA / Bisley** | 300y (Fig 11), 500–1000y (Fig 12) | NRA TR yard faces |
-| **DCRA (ICFRA)** — yards | 300y, 500–1000y | ICFRA short/mid/long-range faces on Bisley yard distances |
-| **DCRA (ICFRA metric)** | 300m, 500–1000m | ICFRA faces at DCRA domestic (Connaught) distances |
+| Standard | Rule book | Yards | Metres |
+|----------|-----------|-------|--------|
+| **NRA UK** (Bisley) | NRA Handbook 2026, Appendix V — targets changed 1 Jan 2025 | 300, 500, 600, 800, 900, 1000 | — |
+| **ICFRA** | TR Technical Rules 2024, Annex T/D | 300, 500, 600, 700, 800, 900, 1000 | 300, 500, 600, 700, 800, 900 |
+| **DCRA** | DCRA Rulebook 2024, rule 3.01 Tables A and B | 300, 500, 600, 800, 900, 1000 | 300, 500, 600, 700, 800, 900 |
 
-Each distance maps to the correct ICFRA face band — short range (~300 m), mid range (~500–600 m), or long range (~700 m+).
+A distance is offered only where its rule book defines a face for it: Bisley has no 700 yd target-rifle target, DCRA's yard table has no 700 yd column, and neither ICFRA nor DCRA defines 1000 m. ICFRA shoots 700 yd on its 600 m face.
+
+**Scoring.** V-bull, Bull 5, Inner 4, Magpie 3, Outer 2, and **1** for a hit anywhere else on the target. A shot off the target frame is a miss — including the parts of the long-range Outer ring that run off the top and bottom of the frame. The Hit area is the target frame (ICFRA), the frame less a 1-inch border (DCRA), or the Hit rectangle printed in the NRA table.
+
+**Strings saved by earlier versions** were plotted on the app's previous faces, most of which did not match any rule book. They keep their recorded scores and are drawn on a preserved copy of the face they were shot on, labelled "old face".
 
 ---
 
@@ -124,7 +129,9 @@ TargetSheet/
 ├── app.py            # TargetSheetApp: state, navigation, scoring/string logic, options
 ├── constants.py      # Target geometry, canvas scale, colour palette
 ├── scoring.py        # Pure scoring/formatting helpers + shot-call glyphs
-├── targets.py        # Ring specs, TARGET_CONFIGS, build_dist_config()
+├── targets.py        # NRA / ICFRA / DCRA faces from their rule books, TARGET_CONFIGS
+├── targetface.py     # Draws a face: aiming mark, rings, frame, MOA grid
+├── markers.py        # Draws shot markers and the selection highlight
 ├── graphs.py         # Shared ballistic-graph drawing (wind / elevation)
 └── views/            # Per-screen UI mixins
     ├── menu.py       # MenuMixin       — main menu + distance/match-length select
@@ -157,18 +164,19 @@ A **shot** is a dict:
 | `x`, `y` | float | Target (SVG) coordinates of the shot |
 | `sc` | int | Score (0–5) |
 | `iv` | bool | True if a V-bull |
-| `lb` | str | Score label (`V`/`5`/`4`/`3`/`2`/`M`) |
+| `lb` | str | Score label (`V`/`5`/`4`/`3`/`2`/`1`/`M`) — `1` is a hit on the target outside the Outer ring |
 | `tp` | str | Shot type: `A` \| `B` \| `sc` |
 | `w`, `e` | float | Wind / elevation dialled at the time of the shot |
 | `cl` | str \| None | Shot-call key, or None |
 
-A **string** bundles its shots with the conversion setting (`cv`), distance key (`dist`), MOA scale (`mu`), and match length.
+A **string** bundles its shots with the conversion setting (`cv`), distance key (`dist`), MOA scale (`mu`), match length, and `face_rev` — the revision of the face table it was plotted under, so strings from earlier versions stay on the face they were shot on.
 
 ---
 
 ## Notes & limitations
 
-- **In-memory only.** Strings, presets, and options live in memory for the current session — there is no save-to-disk persistence yet. Closing the app clears recorded strings.
+- **Saved locally.** Strings, the in-progress session, presets and options are saved as JSON in a per-user folder (see *Data storage*) and restored on the next launch.
+- **The 1-point zone needs a zoom-out.** The default view is framed on the rings; the target frame lies beyond it on most faces, so zoom out to plot a shot in the Hit area.
 - **Desktop GUI.** The window is sized for a tablet-style layout (default 1080×720, min 940×640).
 
 ---

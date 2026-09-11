@@ -9,7 +9,10 @@ with regulation NRA and ICFRA ring sizes per distance.
 Package layout:
     constants.py   – geometry, scale, colour palette
     scoring.py     – pure scoring/formatting helpers + shot-call glyphs
-    targets.py     – ring specs, TARGET_CONFIGS, build_dist_config()
+    targets.py     – NRA / ICFRA / DCRA faces from their rule books,
+                     TARGET_CONFIGS, build_dist_config(), hit_area()
+    targetface.py  – draws a face: aiming mark, rings, frame, MOA grid
+    markers.py     – draws the shot markers (and the selection highlight)
     graphs.py      – shared ballistic-graph drawing (wind / elevation), used by
                      both the live target and the scorecard analysis
     app.py         – TargetSheetApp: state, navigation, scoring logic, and

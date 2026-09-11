@@ -97,8 +97,9 @@ def test_clamp_bounds():
 
 # ── target configuration table ────────────────────────────────────────────────
 
-def test_all_21_configs_present():
-    assert len(TARGET_CONFIGS) == 21
+def test_all_31_configs_present():
+    """NRA 6 + ICFRA 7 yards + 6 metres + DCRA 6 yards + 6 metres."""
+    assert len(TARGET_CONFIGS) == 31
 
 
 def test_every_config_builds():
@@ -120,17 +121,19 @@ def test_outer_ring_maps_to_canvas_radius_R():
         assert build_dist_config(key)[0][-1]["r"] == pytest.approx(R)
 
 
-def test_moa_scale_shrinks_with_distance():
-    """1 MOA covers more of the face as distance grows on a fixed face size."""
-    mu_300 = build_dist_config("300y-nra")[1]
+def test_moa_scale_grows_with_distance_on_the_same_face():
+    """NRA long range uses one face from 800 to 1000 yd, so 1 MOA covers more
+    of it the further back you are."""
+    mu_800 = build_dist_config("800y-nra")[1]
     mu_1000 = build_dist_config("1000y-nra")[1]
-    assert mu_1000 > mu_300
+    assert mu_1000 == pytest.approx(mu_800 * 1000 / 800)
 
 
 def test_metric_configs_convert_metres_to_yards():
-    """300 m is a longer shot than 300 y, so 1 MOA covers more of the face."""
-    assert (build_dist_config("300m-dcra")[1]
-            > build_dist_config("300y-dcra")[1])
+    """DCRA's 300 yd and 300 m faces share a 22 in Outer, so their MOA scales
+    differ only by the metre-to-yard conversion."""
+    ratio = build_dist_config("300m-dcra")[1] / build_dist_config("300y-dcra")[1]
+    assert ratio == pytest.approx(1 / 0.9144)
 
 
 def test_unknown_distance_key_raises():

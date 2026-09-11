@@ -249,7 +249,7 @@ def test_scorecard_renders_saved_and_in_progress_together(app, mkshot):
 def test_analysis_renders_a_saved_series(app, mkshot):
     app.strings = [{"shots": [mkshot(0, 0, "A"),
                               mkshot(3, 3, "sc", cl="good")],
-                    "cv": "b", "dist": "1000m-dcra",
+                    "cv": "b", "dist": "900m-dcra",
                     "mu": 47.0, "shoot_len": 15}]
     app.set_analysis(0)
     app.root.update_idletasks()

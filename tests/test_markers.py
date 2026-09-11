@@ -95,7 +95,7 @@ def place(app, *points):
 
 def test_drawn_marker_radius_is_the_same_at_every_zoom(app):
     app.show_screen("target")
-    place(app, (20, 0), (25, 4))          # outside the V ring: one oval each
+    place(app, (40, 0), (45, 4))          # outside the V ring: one oval each
     radii = {}
     for zoom in (1.0, 2.0, 4.0, 8.0):
         app._zoom = zoom
@@ -109,7 +109,7 @@ def test_drawn_marker_radius_is_the_same_at_every_zoom(app):
 def test_zooming_pushes_shots_apart(app):
     """The whole point: a tight pair separates as the face expands."""
     app.show_screen("target")
-    place(app, (20, 0), (22, 0))
+    place(app, (40, 0), (42, 0))          # a tight non-V pair
 
     def gap():
         (ax, ay), (bx, by) = marker_centres(app._canvas)
@@ -167,7 +167,7 @@ def test_shot_preview_matches_the_marker_it_becomes(app):
 # -- the analysis face behaves the same ---------------------------------------
 
 def test_analysis_markers_are_pinned_across_zoom(app, mkshot):
-    app.strings = [{"shots": [mkshot(20, 0, "sc"), mkshot(22, 0, "sc")],
+    app.strings = [{"shots": [mkshot(40, 0, "sc"), mkshot(42, 0, "sc")],
                     "cv": "none", "dist": "300y-nra", "mu": 21.4,
                     "shoot_len": 10}]
     app.set_analysis(0)

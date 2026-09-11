@@ -2,11 +2,12 @@ import math
 import tkinter as tk
 from tkinter import ttk
 
-from constants import COL, R, VB
+from constants import COL, VB
 from scoring import wind_label, elev_label, CALL_GLYPHS
-from targets import TARGET_CONFIGS, build_dist_config
+from targets import build_dist_config, display_name, is_known
 import graphs
 import markers
+import targetface
 
 
 FACE_MIN = 500   # the face never shrinks below its original fixed size
@@ -57,8 +58,7 @@ class AnalysisMixin:
         """
         EW, WH   = 150, 150   # elevation-graph width, wind-graph height
         MIN_SIZE = FACE_MIN   # also the fallback before layout has settled
-        dist_key = dist if dist in TARGET_CONFIGS else "300y-nra"
-        rings, _ = build_dist_config(dist_key)
+        dist_key = dist if is_known(dist) else "300y-nra"
 
         wrapper = tk.Frame(parent, bg=COL["bg"])
         wrapper.pack(fill="x", padx=16, pady=(10, 4))
@@ -119,44 +119,7 @@ class AnalysisMixin:
             canvas.delete("all")
             w, h = face()
             sc, cx, cy = eff()
-
-            canvas.create_rectangle(0, 0, w, h,
-                                    fill=COL["target_bg"], outline="")
-
-            highlight = round(R / mu)
-            max_i     = int(VB / mu) + 1
-            for i in range(-max_i, max_i + 1):
-                gx = i * mu * sc + cx
-                gy = i * mu * sc + cy
-                if i == 0:
-                    colour, lw = "#555", 0.8
-                elif abs(i) == highlight:
-                    colour, lw = "#999", 0.6
-                else:
-                    colour, lw = "#ccc", 0.4
-                canvas.create_line(0, gy, w, gy, fill=colour, width=lw)
-                canvas.create_line(gx, 0, gx, h, fill=colour, width=lw)
-
-            ext = VB * sc
-            canvas.create_line(cx-ext, cy-ext, cx+ext, cy+ext,
-                               fill="#bbb", width=1.0)
-            canvas.create_line(cx+ext, cy-ext, cx-ext, cy+ext,
-                               fill="#bbb", width=1.0)
-            p = 104 * sc
-            canvas.create_line(cx-p, cy-p, cx+p, cy+p,
-                               fill="#bbb", width=0.8, dash=(6, 4))
-            canvas.create_line(cx+p, cy-p, cx-p, cy+p,
-                               fill="#bbb", width=0.8, dash=(6, 4))
-
-            for ring in reversed(rings):
-                r_px = ring["r"] * sc
-                lw   = 1.8 if ring["r"] >= R * 0.14 else 1.2
-                canvas.create_oval(cx-r_px, cy-r_px, cx+r_px, cy+r_px,
-                                   outline=COL["target_ink"], width=lw)
-
-            canvas.create_rectangle(0, 0, w, h, outline="#555", width=1)
-            canvas.create_text(5, 4, text=f"1 MOA · {dist}", anchor="nw",
-                               fill="#aaa", font=("Courier", 8))
+            targetface.draw_face(canvas, dist_key, sc, cx, cy, w, h)
 
             selected = self.analysis_selected
             if selected is not None and not (0 <= selected < len(shots)):
@@ -266,7 +229,7 @@ class AnalysisMixin:
             str_shots = sd["shots"]
             cv        = sd.get("cv",   "none")
             dist      = sd.get("dist", "300y-nra")
-            mu        = sd.get("mu",   build_dist_config(dist)[1])
+            mu        = sd["mu"] if "mu" in sd else build_dist_config(dist)[1]
             shoot_len = sd.get("shoot_len", 10)
 
         tt  = self._calc_total(str_shots, cv, shoot_len)
@@ -277,7 +240,7 @@ class AnalysisMixin:
         hdr.pack(fill="x", padx=16, pady=12)
         tk.Label(hdr, text=lbl, bg=COL["bg"], fg=COL["text"],
                  font=("Helvetica", 15, "bold")).pack(side="left")
-        tk.Label(hdr, text=dist, bg=COL["bg"], fg=COL["text2"],
+        tk.Label(hdr, text=display_name(dist), bg=COL["bg"], fg=COL["text2"],
                  font=("Helvetica", 11)).pack(side="left", padx=(8, 0))
         score_str = f"{tt['tot']}" + (f"  v{tt['v']}" if tt["v"] else "")
         tk.Label(hdr, text=score_str, bg=COL["bg"], fg=COL["text"],

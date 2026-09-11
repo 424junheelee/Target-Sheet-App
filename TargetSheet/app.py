@@ -5,7 +5,8 @@ from tkinter import messagebox
 import storage
 from constants import COL
 from scoring import score_shot, snap, clamp
-from targets import TARGET_CONFIGS, build_dist_config
+from targets import (TARGET_CONFIGS, FACE_REV, build_dist_config, display_name,
+                     hit_area, is_known, migrate_legacy)
 from views.menu import MenuMixin
 from views.target import TargetMixin
 from views.scorecard import ScorecardMixin
@@ -25,7 +26,8 @@ class TargetSheetApp(MenuMixin, TargetMixin, ScorecardMixin,
         x, y : float     – SVG coordinates of the shot
         sc   : int       – score (0–5)
         iv   : bool       – True if V-bull
-        lb   : str       – score label ("V"/"5"/"4"/"3"/"2"/"M")
+        lb   : str       – score label ("V"/"5"/"4"/"3"/"2"/"1"/"M");
+                           "1" is a hit on the target outside the Outer ring
         tp   : str       – shot type: "A" | "B" | "sc"
         w, e : float     – wind / elevation dialled at time of shot
         cl   : str|None  – shot-call key, or None
@@ -35,6 +37,8 @@ class TargetSheetApp(MenuMixin, TargetMixin, ScorecardMixin,
         cv    : str       – conversion setting at commit time
         dist  : str       – distance/standard config key
         mu    : float     – SVG units per MOA for the string's distance
+        face_rev : int    – targets.FACE_REV the string was plotted under;
+                            strings without it predate the rule-book faces
     """
 
     def __init__(self):
@@ -78,8 +82,7 @@ class TargetSheetApp(MenuMixin, TargetMixin, ScorecardMixin,
         self.show_graphs: bool = True  # show the wind & elevation graphs while shooting
 
         # Active distance config (default 300y NRA until the user selects one)
-        self.active_dist = "300y-nra"
-        self.active_rings, self.active_mu = build_dist_config("300y-nra")
+        self._apply_dist("300y-nra")
 
         # Restore persisted state before building the UI so all view constructors
         # read the correct values (presets, shoot_len, show_rec, etc.).
@@ -152,9 +155,8 @@ class TargetSheetApp(MenuMixin, TargetMixin, ScorecardMixin,
                 parent=self.root):
             return
 
-        self.active_dist = dist_key
-        self.active_rings, self.active_mu = build_dist_config(dist_key)
-        self._dist_label_var.set(dist_key)
+        self._apply_dist(dist_key)
+        self._dist_label_var.set(display_name(dist_key))
 
         if rescoring:
             self._rescore_shots()
@@ -165,10 +167,17 @@ class TargetSheetApp(MenuMixin, TargetMixin, ScorecardMixin,
         self._save_settings()
         self.show_screen("target")
 
+    def _apply_dist(self, dist_key: str):
+        """Make *dist_key* the active face: its rings, MOA scale and Hit area."""
+        self.active_dist = dist_key
+        self.active_rings, self.active_mu = build_dist_config(dist_key)
+        self.active_hit = hit_area(dist_key)
+
     def _rescore_shots(self):
         """Re-evaluate every placed shot against the active target face."""
         for shot in self.shots:
-            result = score_shot(shot["x"], shot["y"], self.active_rings)
+            result = score_shot(shot["x"], shot["y"], self.active_rings,
+                                self.active_hit)
             shot["sc"] = result["sc"]
             shot["iv"] = result["iv"]
             shot["lb"] = result["lb"]
@@ -258,6 +267,7 @@ class TargetSheetApp(MenuMixin, TargetMixin, ScorecardMixin,
             "shoot_len":     self.shoot_len,
             "target_number": self.target_number,
             "saved_at":      datetime.datetime.now().isoformat(timespec="seconds"),
+            "face_rev":      FACE_REV,
         })
         self.shots         = []
         self.conv          = "none"
@@ -361,14 +371,18 @@ class TargetSheetApp(MenuMixin, TargetMixin, ScorecardMixin,
         self.shoot_len   = s["shoot_len"]
         dist = s["active_dist"]
         if dist in TARGET_CONFIGS:
-            self.active_dist  = dist
-            self.active_rings, self.active_mu = build_dist_config(dist)
+            self._apply_dist(dist)
 
         # Presets
         self.presets = storage.load_presets(list(TARGET_CONFIGS))
 
-        # Saved scorecards
+        # Saved scorecards.  Strings saved before FACE_REV was stamped were
+        # plotted on the pre-audit faces, and stay on those faces.
         self.strings = storage.load_scorecards()
+        for sd in self.strings:
+            if "face_rev" not in sd:
+                sd["dist"] = migrate_legacy(sd["dist"])
+                sd["face_rev"] = FACE_REV
 
         # In-progress session — overrides active_dist from settings if present
         sess = storage.load_session()
@@ -377,9 +391,10 @@ class TargetSheetApp(MenuMixin, TargetMixin, ScorecardMixin,
             self.conv        = sess["conv"]
             self.conv_chosen = sess["conv_chosen"]
             sess_dist        = sess["active_dist"]
-            if sess_dist in TARGET_CONFIGS:
-                self.active_dist  = sess_dist
-                self.active_rings, self.active_mu = build_dist_config(sess_dist)
+            if "face_rev" not in sess:        # started on a pre-audit face
+                sess_dist = migrate_legacy(sess_dist)
+            if is_known(sess_dist):
+                self._apply_dist(sess_dist)
             self.wind_val      = float(sess["wind_val"])
             self.elev_val      = float(sess["elev_val"])
             self.target_number = str(sess.get("target_number", ""))
@@ -406,6 +421,7 @@ class TargetSheetApp(MenuMixin, TargetMixin, ScorecardMixin,
                     "wind_val":      self.wind_val,
                     "elev_val":      self.elev_val,
                     "target_number": self.target_number,
+                    "face_rev":      FACE_REV,
                 })
             else:
                 storage.save_session(None)

@@ -2,7 +2,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from constants import COL
-from targets import TARGET_CONFIGS, BISLEY_DISTANCES, DCRA_METRIC_DISTANCES
+from targets import TARGET_CONFIGS, SECTIONS
 
 
 class SettingsMixin:
@@ -98,12 +98,7 @@ class SettingsMixin:
         style = ttk.Style()
         style.configure("TNotebook.Tab", font=("Helvetica", 11), padding=(12, 6))
 
-        groups = [
-            ("NRA / Bisley  (yards)",   [f"{d}-nra"  for d in BISLEY_DISTANCES]),
-            ("DCRA  (yards)",           [f"{d}-dcra" for d in BISLEY_DISTANCES]),
-            ("DCRA domestic  (metres)", [f"{d}-dcra" for d in DCRA_METRIC_DISTANCES]),
-        ]
-        for group_label, cfg_keys in groups:
+        for group_label, cfg_keys in SECTIONS:
             tk.Frame(body, bg=COL["border"], height=1).pack(
                 fill="x", padx=20, pady=(14, 0))
             tk.Label(body, text=group_label, bg=COL["bg"], fg=COL["accent"],

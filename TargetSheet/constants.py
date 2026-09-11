@@ -36,4 +36,7 @@ COL: dict[str, str] = {
     "rec_bg":     "#fefbf0",
     "nav_bg":     "#ede8dc",
     "skeleton":   "#c3c9d0",   # outline for shots muted by a selection
+    "aim_mark":   "#e3d7bf",   # the black aiming mark, as a tint the grid reads over
+    "off_target": "#d8d6cf",   # canvas beyond the target frame
+    "frame":      "#8a8171",   # edge of the frame, i.e. of the 1-point Hit area
 }

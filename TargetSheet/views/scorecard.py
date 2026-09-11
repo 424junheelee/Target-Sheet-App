@@ -3,6 +3,7 @@ from tkinter import ttk, messagebox
 
 from constants import COL
 from scoring import wind_label, elev_label, CALL_GLYPHS
+from targets import display_name
 
 
 class ScorecardMixin:
@@ -56,7 +57,7 @@ class ScorecardMixin:
             hdr.pack(fill="x", padx=12, pady=8)
             tk.Label(hdr, text=lbl, bg=COL["bg2"], fg=COL["text2"],
                      font=("Helvetica", 12)).pack(side="left")
-            tk.Label(hdr, text=dist, bg=COL["bg2"], fg=COL["text2"],
+            tk.Label(hdr, text=display_name(dist), bg=COL["bg2"], fg=COL["text2"],
                      font=("Helvetica", 9)).pack(side="left", padx=(6, 0))
 
             # Discard (current in-progress) or Delete (saved series)

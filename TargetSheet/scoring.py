@@ -15,12 +15,27 @@ CALL_COLOURS: dict[str, str] = {
 }
 
 
-def score_shot(x: float, y: float, rings: list[dict]) -> dict:
-    """Return the innermost ring dict that contains (x, y), or a miss dict."""
+def score_shot(x: float, y: float, rings: list[dict],
+               hit: tuple[float, float] | None = None) -> dict:
+    """Score a shot at SVG (x, y).
+
+    rings : ring dicts V-bull -> Outer, each with its SVG radius 'r'
+    hit   : (half_width, half_height) of the target's 1-point Hit area, or
+            None for a face without one - then anything outside the Outer
+            ring is simply a miss.
+
+    Off the target is a miss even inside a ring's circle: at long range the
+    Outer ring runs off the top and bottom of the frame, and the rule books
+    count nothing that is not on the target.
+    """
+    if hit is not None and (abs(x) > hit[0] or abs(y) > hit[1]):
+        return {"sc": 0, "iv": False, "lb": "M"}
     d = math.hypot(x, y)
     for ring in rings:
         if d <= ring["r"]:
             return ring
+    if hit is not None:
+        return {"sc": 1, "iv": False, "lb": "1"}
     return {"sc": 0, "iv": False, "lb": "M"}
 
 

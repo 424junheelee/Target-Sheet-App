@@ -1,10 +1,12 @@
 import tkinter as tk
 from tkinter import ttk, simpledialog
 
-from constants import COL, R, VB, CANVAS_PX, MAXV, SHOT_R
+from constants import COL, VB, CANVAS_PX, MAXV, SHOT_R
 from scoring import score_shot, wind_label, elev_label, snap, clamp, CALL_GLYPHS
 import graphs
 import markers
+import targetface
+from targets import display_name
 
 # Ballistic-graph strip sizes (the short axis stays fixed; the long axis scales)
 ELEV_GRAPH_W = 152   # width of the vertical elevation graph (right of target)
@@ -31,7 +33,7 @@ class TargetMixin:
                   font=("Helvetica", 11), relief="flat", bd=0,
                   padx=14, pady=8, cursor="hand2",
                   command=self._back_to_menu).pack(side="left")
-        self._dist_label_var = tk.StringVar(value=self.active_dist)
+        self._dist_label_var = tk.StringVar(value=display_name(self.active_dist))
         tk.Label(nav, textvariable=self._dist_label_var,
                  bg=COL["nav_bg"], fg=COL["text"],
                  font=("Helvetica", 12, "bold")).pack(side="left", padx=4)
@@ -396,49 +398,13 @@ class TargetMixin:
         return (px - cx) / sc, (py - cy) / sc
 
     def _draw_target_bg(self):
-        c  = self._canvas
+        c = self._canvas
         c.delete("bg")
-        mu = self.active_mu
         w, h, sc, cx, cy = self._metrics()
-
-        c.create_rectangle(0, 0, w, h, fill=COL["target_bg"], outline="", tags="bg")
-
-        highlight = round(R / mu)
-        max_i     = int(VB / mu) + 1
-        for i in range(-max_i, max_i + 1):
-            gx = i * mu * sc + cx
-            gy = i * mu * sc + cy
-            if i == 0:
-                colour, width = "#555", 0.8
-            elif abs(i) == highlight:
-                colour, width = "#999", 0.6
-            else:
-                colour, width = "#ccc", 0.4
-            c.create_line(0, gy, w, gy, fill=colour, width=width, tags="bg")
-            c.create_line(gx, 0, gx, h, fill=colour, width=width, tags="bg")
-
-        ext = VB * sc
-        c.create_line(cx-ext, cy-ext, cx+ext, cy+ext,
-                      fill="#bbb", width=1.0, tags="bg")
-        c.create_line(cx+ext, cy-ext, cx-ext, cy+ext,
-                      fill="#bbb", width=1.0, tags="bg")
-        p = 104 * sc
-        c.create_line(cx-p, cy-p, cx+p, cy+p,
-                      fill="#bbb", width=0.8, dash=(6, 4), tags="bg")
-        c.create_line(cx+p, cy-p, cx-p, cy+p,
-                      fill="#bbb", width=0.8, dash=(6, 4), tags="bg")
-
-        for ring in reversed(self.active_rings):
-            r_px = ring["r"] * sc
-            lw   = 1.8 if ring["r"] >= R * 0.14 else 1.2
-            c.create_oval(cx-r_px, cy-r_px, cx+r_px, cy+r_px,
-                          outline=COL["target_ink"], width=lw, tags="bg")
-
-        c.create_rectangle(0, 0, w, h, outline="#555", width=1, tags="bg")
-        c.create_text(6, 5, text=f"1 MOA · {self.active_dist}", anchor="nw",
-                      fill="#aaa", font=("Courier", 7), tags="bg")
+        targetface.draw_face(c, self.active_dist, sc, cx, cy, w, h, tags="bg")
+        c.tag_lower("bg")           # the face always sits beneath the shots
         # keep the reset-view button anchored to the top-right corner
-        self._canvas.coords(self._reset_win, w - 6, 6)
+        c.coords(self._reset_win, w - 6, 6)
 
     def _draw_shots(self):
         self._canvas.delete("shot")
@@ -489,7 +455,7 @@ class TargetMixin:
             self.conv_chosen = True
         self.clear_shot_selection()
         svgx, svgy = self._to_svg(event.x, event.y)
-        result = score_shot(svgx, svgy, self.active_rings)
+        result = score_shot(svgx, svgy, self.active_rings, self.active_hit)
         self.shots.append({
             "x": svgx, "y": svgy,
             "sc": result["sc"], "iv": result["iv"], "lb": result["lb"],

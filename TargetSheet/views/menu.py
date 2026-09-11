@@ -2,7 +2,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from constants import COL
-from targets import TARGET_CONFIGS, BISLEY_DISTANCES, DCRA_METRIC_DISTANCES
+from targets import TARGET_CONFIGS, SECTIONS, display_name, moa_diameters
 
 
 class MenuMixin:
@@ -89,7 +89,8 @@ class MenuMixin:
         if self.shots:
             n = len(self.shots)
             self._resume_sub.set(
-                f"{self.active_dist} · {n} shot{'s' if n != 1 else ''} placed")
+                f"{display_name(self.active_dist)} · "
+                f"{n} shot{'s' if n != 1 else ''} placed")
             if not self._resume_card.winfo_ismapped():
                 self._resume_card.pack(fill="x", pady=(0, 14), ipadx=20, ipady=12,
                                        before=self._first_menu_card)
@@ -138,27 +139,18 @@ class MenuMixin:
             self._len_btns[n] = b
         self._set_shoot_len(self.shoot_len)
 
-        sections = [
-            ("NRA / Bisley  (Figure 12 — 72\" outer)", BISLEY_DISTANCES,       "nra"),
-            ("DCRA yards  (ICFRA faces at Bisley distances)", BISLEY_DISTANCES, "dcra"),
-            ("DCRA domestic metric  (ICFRA — Connaught ranges)",
-             DCRA_METRIC_DISTANCES, "dcra"),
-        ]
-        for section_title, dist_list, standard in sections:
+        for section_title, cfg_keys in SECTIONS:
             tk.Label(inner, text=section_title,
                      bg=COL["bg"], fg=COL["accent"],
                      font=("Helvetica", 11, "bold")).pack(
                          pady=(14, 2), padx=20, anchor="w")
 
-            for base_dist in dist_list:
-                cfg_key = f"{base_dist}-{standard}"
-                cfg     = TARGET_CONFIGS[cfg_key]
-                radii   = cfg["rings_r_in"]
-                yards   = (cfg["metres"] * 1.09361
-                           if "metres" in cfg else cfg["yards"])
-                ipm     = yards * 0.01047
-                desc    = (f"Outer {radii[-1]/ipm:.1f} MOA r  ·  "
-                           f"Bull {radii[1]/ipm:.2f} MOA r")
+            for cfg_key in cfg_keys:
+                cfg = TARGET_CONFIGS[cfg_key]
+                # Diameters in MOA, the way the rule books quote them
+                v, bull, _, _, outer = moa_diameters(cfg_key)
+                desc = (f"Bull {bull:.2f} MOA  ·  V {v:.2f} MOA  ·  "
+                        f"Outer {outer:.1f} MOA")
 
                 card = tk.Frame(inner, bg=COL["nav_bg"], cursor="hand2",
                                 relief="flat", bd=0)
